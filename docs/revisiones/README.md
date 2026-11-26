@@ -14,3 +14,4 @@ Si la revisión sale **RECHAZADA**, el Orquestador devuelve a Develop los fallos
 | T03 | 1 | 0 bloqueantes; 4 sugerencias, 3 llevadas a criterios de T07/T08 | [T03-r1](T03-r1.md) |
 | T04 | 3 | r1: 3 (config no nativo, clave obsoleta, **regex del proxy que dejaba rutas sin refrescar la sesión**) · r3: 1 del Orquestador al hacer el diff contra producción (el config completo degradaba 12 ajustes) | [T04-r3](T04-r3.md) |
 | T05 | 2 | r1: 1 (**un 500 en una Server Action dejaba la pantalla de error en inglés de Next**; Testing añadió 4 E2E) + 2 sugerencias pasadas a criterios | [T05-r2](T05-r2.md) |
+| T06 | 2 | r1: 1 (**mensaje crudo de zod en inglés con entradas manipuladas**; el mismo hueco se corrigió en auth) + 2 sugerencias pasadas a criterios | [T06-r2](T06-r2.md) |

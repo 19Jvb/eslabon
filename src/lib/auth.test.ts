@@ -26,6 +26,14 @@ describe("Credentials (login)", () => {
   });
 });
 
+describe("input that is not an object", () => {
+  it.each([undefined, null, "x", 42, []])("answers %j with the generic Spanish message", (input) => {
+    for (const schema of [Credentials, NewAccount]) {
+      expect(firstError(schema.safeParse(input))?.message).toBe("No se pudo completar. Inténtalo de nuevo.");
+    }
+  });
+});
+
 describe("NewAccount (registro)", () => {
   it("rejects a 7-character password with the Spanish message", () => {
     const issue = firstError(NewAccount.safeParse({ email: "ana@example.com", password: "1234567" }));

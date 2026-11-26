@@ -13,6 +13,9 @@ export default defineConfig({
   // Sin reintentos: el registro crea cuentas que no se pueden borrar y Supabase limita los logins por IP.
   retries: 0,
   forbidOnly: true,
+  // En serie: los archivos comparten el usuario de E2E (rls.spec borra sus «e2e-%», auth.spec cierra su sesión)
+  // y en paralelo se pisarían los datos.
+  workers: 1,
   reporter: "list",
   use: { baseURL, actionTimeout: 15_000, navigationTimeout: 30_000, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

@@ -1,59 +1,22 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   APP_URL,
+  GENERIC,
   LOGIN_URL,
+  announced,
+  button,
   env,
   expectFitsMobile,
   expectNoSeriousA11yViolations,
+  failServerActions,
+  field,
+  heading,
   login,
+  slowSubmits,
+  tabTo,
 } from "./helpers";
 
 // Nota: los logins de este archivo son pocos a propósito (Supabase limita los inicios de sesión por IP).
-
-const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const button = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
-/** D-11: el error tiene que estar en una región anunciada (role="alert" o aria-live). */
-const announced = (page: Page, text: string) =>
-  page.locator('[role="alert"], [aria-live]').filter({ hasText: text });
-const heading = (page: Page) => page.getByRole("heading", { level: 1, name: "Tus hábitos" });
-
-/**
- * D-10: retrasa cada envío de credenciales (Server Action con cabecera next-action, o POST directo
- * a GoTrue) para que se vea el estado de envío, y devuelve la lista de envíos que salieron.
- */
-async function slowCredentialSubmits(page: Page) {
-  const sent: string[] = [];
-  await page.route("**/*", async (route) => {
-    const request = route.request();
-    const isSubmit =
-      request.method() === "POST" &&
-      ((await request.headerValue("next-action")) !== null ||
-        /\/auth\/v1\/(token|signup)/.test(request.url()));
-    if (isSubmit) {
-      sent.push(request.url());
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-    await route.continue();
-  });
-  return sent;
-}
-
-/** D-11: llega al elemento solo con Tab y comprueba que el foco se ve. */
-async function tabTo(page: Page, target: Locator) {
-  await expect(target).toBeVisible();
-  for (let i = 0; i < 20; i++) {
-    await page.keyboard.press("Tab");
-    if (await target.evaluate((el) => el === document.activeElement)) {
-      const focusVisible = await target.evaluate((el) => {
-        const s = getComputedStyle(el);
-        return (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || s.boxShadow !== "none";
-      });
-      expect(focusVisible, "el foco no se ve (ni outline ni ring)").toBe(true);
-      return;
-    }
-  }
-  throw new Error("No se llega al elemento con Tab");
-}
 
 test.describe("páginas de acceso", () => {
   test("/login: Email, Contraseña, «Entrar», «Probar con la cuenta demo» y título «Entrar · Eslabón»", async ({ page }) => {
@@ -123,7 +86,7 @@ test.describe("login", () => {
   });
 
   test("doble clic en «Entrar»: un solo envío, botón deshabilitado mientras envía, y ?next= se ignora (siempre /app)", async ({ page }) => {
-    const sent = await slowCredentialSubmits(page);
+    const sent = await slowSubmits(page);
     await page.goto("/login?next=https%3A%2F%2Fexample.com%2F");
     await field(page, "Email").fill(env("E2E_USER_EMAIL"));
     await field(page, "Contraseña").fill(env("E2E_USER_PASSWORD"));
@@ -190,7 +153,7 @@ test.describe("registro", () => {
   // Crea 1 cuenta por ejecución, que no se puede borrar sin la service_role.
   test("registro correcto con doble clic: un solo envío, botón deshabilitado y entra directo en /app con su email", async ({ page }) => {
     const email = `e2e+${Date.now()}@example.com`;
-    const sent = await slowCredentialSubmits(page);
+    const sent = await slowSubmits(page);
     await page.goto("/registro");
     await field(page, "Email").fill(email);
     await field(page, "Contraseña").fill(`e2e-${crypto.randomUUID()}`);
@@ -203,22 +166,8 @@ test.describe("registro", () => {
   });
 });
 
-/**
- * D-10 (añadido en la revisión de T05 r1): si la Server Action falla (500), la página no se pierde:
- * aparece el genérico en español, anunciado, y el formulario sigue ahí y se puede reenviar.
- * Ningún envío llega al servidor, así que no gasta logins.
- */
-async function failServerActions(page: Page) {
-  await page.route("**/*", async (route) => {
-    const request = route.request();
-    if (request.method() === "POST" && (await request.headerValue("next-action")) !== null) {
-      return route.fulfill({ status: 500, contentType: "text/plain", body: "Internal Server Error" });
-    }
-    return route.continue();
-  });
-}
-const GENERIC = "No se pudo completar. Inténtalo de nuevo.";
-
+// D-10 (añadido en la revisión de T05 r1): si la Server Action falla (500), la página no se pierde.
+// Ningún envío llega al servidor, así que no gasta logins.
 test.describe("fallo del servidor (D-10)", () => {
   for (const [path, submit] of [
     ["/login", "Entrar"],

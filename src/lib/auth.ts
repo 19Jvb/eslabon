@@ -3,10 +3,14 @@ import { z } from "zod";
 export const GENERIC_ERROR = "No se pudo completar. Inténtalo de nuevo.";
 const SHORT_PASSWORD = "La contraseña debe tener al menos 8 caracteres";
 
-export const Credentials = z.object({
-  email: z.email("Escribe un email válido"),
-  password: z.string("Escribe tu contraseña").min(1, "Escribe tu contraseña"),
-});
+// The object-level message covers a body that is not an object: zod's default is English.
+export const Credentials = z.object(
+  {
+    email: z.email("Escribe un email válido"),
+    password: z.string("Escribe tu contraseña").min(1, "Escribe tu contraseña"),
+  },
+  GENERIC_ERROR,
+);
 
 // 72 is the bcrypt limit Supabase Auth enforces; 8 matches minimum_password_length in supabase/config.jsonc.
 export const NewAccount = Credentials.extend({

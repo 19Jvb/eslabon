@@ -1,44 +1,47 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { HABITS_HEADING_ID } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
-import { SignOutForm } from "./sign-out-form";
+import { HabitItem, NewHabitForm } from "./habit-forms";
 
 export const metadata: Metadata = { title: "Tus hábitos" };
 
 export default function AppPage() {
   return (
-    <div className="flex flex-1 flex-col bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-3">
-          <span className="text-lg font-bold text-emerald-800">Eslabón</span>
-          <Suspense fallback={<span className="text-sm text-neutral-600">Cargando…</span>}>
-            <Account />
-          </Suspense>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
-        <h1 className="text-2xl font-semibold text-neutral-900">Tus hábitos</h1>
-      </main>
-    </div>
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8">
+      <h1 id={HABITS_HEADING_ID} tabIndex={-1} className="rounded text-2xl font-semibold text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+        Tus hábitos
+      </h1>
+      <Suspense fallback={<p className="text-neutral-600">Cargando tus hábitos…</p>}>
+        <HabitList />
+      </Suspense>
+      <NewHabitForm />
+    </main>
   );
 }
 
-// Request-time only (behind <Suspense>): connection() keeps it out of the runtime prefetch,
-// where cookies() resolves but Supabase's token-expiry check may not read the current time.
-async function Account() {
+async function HabitList() {
   await connection();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { data: habits, error } = await supabase.from("habits").select("id, name, color").order("created_at");
+
+  if (error) {
+    return (
+      <p role="alert" className="font-medium text-red-700">
+        No se pudieron cargar tus hábitos. Recarga la página para intentarlo de nuevo.
+      </p>
+    );
+  }
+  if (habits.length === 0) {
+    return <p className="text-neutral-700">Aún no tienes hábitos. Crea el primero con el formulario de abajo.</p>;
+  }
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="truncate text-sm text-neutral-700">{user.email}</span>
-      <SignOutForm />
-    </div>
+    <ul className="flex flex-col gap-3">
+      {habits.map((habit) => (
+        <HabitItem key={habit.id} habit={habit} />
+      ))}
+    </ul>
   );
 }

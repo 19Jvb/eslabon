@@ -48,7 +48,7 @@
 ### Checkpoint B: login demo funcionando en local
 
 ## Fase 3: Funcionalidades (todas con UI: Testing escribe primero los E2E)
-- [ ] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
+- [x] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
   - Lista: los hábitos del usuario en una lista (`<ul>`/`<li>`), ordenados por fecha de creación (el más antiguo primero), cada uno con su nombre y una muestra de su color.
   - Vacío: si no hay hábitos, se ve el texto «Aún no tienes hábitos» junto al formulario de creación.
   - Crear: sección con el encabezado «Nuevo hábito», campo «Nombre», un grupo de radios «Color» (Rojo, Naranja, Ámbar, Verde, Azul y Violeta; por defecto Verde) y el botón «Crear». Tras crear, el campo se vacía y el hábito aparece en la lista.
@@ -59,6 +59,8 @@
   - Heredado de T05-r1: con más rutas bajo /app, la comprobación de sesión sube a `src/app/app/layout.tsx`.
   - Heredado de T04-r2: para editar se usa `update({ name, color }).eq("id", …)`, nunca `upsert`, porque el grant de update es solo sobre esas columnas y tocar `id` o `user_id` da 42501. El 23505 se convierte en «Ya tienes un hábito con ese nombre.».
 - [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
+  - Heredado de T06-r2: `signIn` y `signUp` (src/app/(auth)/actions.ts) devuelven el genérico si el argumento no es `FormData`, antes de `Object.fromEntries`, para no responder 500 a peticiones manipuladas. Las acciones nuevas de T07 siguen el mismo patrón.
+  - Heredado de T06-r1: si T07 añade una tercera copia de las clases de input y botón (auth-form, sign-out-form, habit-forms), se unifican en un solo sitio.
   - Heredado de T04-r2: marcar un día es un `insert`, y el 23505 se trata como «ya estaba marcado» (idempotente). Desmarcar es un `delete`. Nada de update ni de `upsert` con update (darían 42501).
   - Heredado de T03-r1 (sugerencias que pasan a ser criterios): si falta la cookie `tz`, o no es válida, se usa `Europe/Madrid`, nunca la zona del servidor. Los días que llegan del cliente se validan con `isEditableDay` antes de tocar la BD (`addDays` no valida: `2026-02-30` se normaliza sin avisar). Una línea en `dates.ts` deja claro ese contrato.
 - [ ] **T08: Estadísticas y mapa de calor de 12 semanas** (M): SPEC F5.
@@ -66,6 +68,7 @@
 - [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
 - [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.
 - [ ] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.
+  - Heredado de T06-r2: al renombrar un hábito ya borrado, el foco no pasa por `body` (unos 275 ms) antes de llegar al h1.
   - Heredado de T05-r2: si la acción falla con un 500, el formulario conserva el email escrito. Si cabe sin complicar, los formularios de auth también funcionan antes de que cargue el JS (mejora progresiva); si no, se documenta como limitación.
 
 ### Checkpoint C: flujo completo en local; el humano lo prueba

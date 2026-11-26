@@ -88,7 +88,8 @@ git diff HEAD -- . ':!.claude' | grep -nE '^\+.*(\.skip\(|\.only\(|@ts-ignore|@t
 
 # D-04: secretos (las dos deben salir vacías)
 git ls-files --others --cached --exclude-standard | grep -E '(^|/)\.env' | grep -v '\.env\.example$'
-git grep -nIE --untracked 'eyJhbGciOi|sb_secret_|sb_publishable_[A-Za-z0-9]|service_role|SERVICE_ROLE' -- ':!*.md'
+git grep -nIE --untracked 'eyJhbGciOi|sb_secret_|sb_publishable_[A-Za-z0-9]|service_role_key|SERVICE_ROLE_KEY' -- ':!*.md'
+#      (se buscan claves, no la palabra «service_role»: nombrar el rol en un comentario no es un secreto)
 
 # D-05: getSession no se usa en el servidor (debe salir vacío)
 git grep -n --untracked 'getSession' -- src

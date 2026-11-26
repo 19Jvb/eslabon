@@ -60,7 +60,7 @@ export async function renameHabit(input: unknown): Promise<ActionResult> {
     .from("habits").update({ name: parsed.data.name }).eq("id", parsed.data.id);
   if (error) {
     if (error.code === "23505") return { ok: false, error: "Ya tienes un hábito con ese nombre." };
-    return { ok: false, error: "No se pudo guardar. Inténtalo de nuevo." };   // 4. nunca mostrar el error crudo
+    return { ok: false, error: "No se pudo completar. Inténtalo de nuevo." }; // 4. genérico único de la app; nunca el error crudo
   }
 
   revalidatePath("/app");

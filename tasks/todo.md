@@ -109,5 +109,6 @@
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.
 
 ## Fase 5: Entrega
+- [ ] **T15a (Orquestador, justo antes de entregar): recargar los datos de ejemplo de la cuenta demo** (como la demo, borrar sus hábitos y llamar a `load_sample_data` con el hoy de Madrid), para que las rachas estén vivas el día que se evalúa. Borrar también las cuentas `e2e+…@example.com` acumuladas.
 - [ ] **T15: README** Documentar en «Decisiones» los dos avisos de `db advisors`: (1) `authenticated_security_definer_function_executable` sobre load_sample_data, que es intencionado y está blindado (T09-r1a); (2) `auth_leaked_password_protection`, que hay que comprobar si el plan Free lo permite y activarlo, y si no, documentarlo. (URL, cuenta demo, diagrama del equipo, cómo ejecutarlo y decisiones) **y escaneo de secretos en todo el historial** (`git log -p` con los patrones de D-04).
 - [ ] **T16: Respuestas a las 4 preguntas** (borrador del Orquestador; el humano lo revisa y le pone su voz).

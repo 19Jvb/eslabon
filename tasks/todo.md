@@ -49,6 +49,13 @@
 
 ## Fase 3: Funcionalidades (todas con UI: Testing escribe primero los E2E)
 - [ ] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
+  - Lista: los hábitos del usuario en una lista (`<ul>`/`<li>`), ordenados por fecha de creación (el más antiguo primero), cada uno con su nombre y una muestra de su color.
+  - Vacío: si no hay hábitos, se ve el texto «Aún no tienes hábitos» junto al formulario de creación.
+  - Crear: sección con el encabezado «Nuevo hábito», campo «Nombre», un grupo de radios «Color» (Rojo, Naranja, Ámbar, Verde, Azul y Violeta; por defecto Verde) y el botón «Crear». Tras crear, el campo se vacía y el hábito aparece en la lista.
+  - Errores (en `role="alert"`): «Escribe un nombre» (vacío o solo espacios), «Máximo 60 caracteres» y «Ya tienes un hábito con ese nombre.» (también si solo cambian mayúsculas o minúsculas).
+  - Renombrar: cada hábito tiene un botón con el nombre accesible «Renombrar <nombre>». Abre un formulario en línea con el campo «Nuevo nombre» ya relleno y los botones «Guardar» y «Cancelar». Escape cancela. Se aplican los mismos errores.
+  - Borrar: botón «Borrar <nombre>» → confirmación (diálogo accesible) con el texto «¿Borrar «<nombre>»? Se perderá su historial.» y los botones «Sí, borrar» y «Cancelar». El foco vuelve a un sitio lógico al cerrar.
+  - Fuera de alcance: cambiar el color de un hábito ya creado.
   - Heredado de T05-r1: con más rutas bajo /app, la comprobación de sesión sube a `src/app/app/layout.tsx`.
   - Heredado de T04-r2: para editar se usa `update({ name, color }).eq("id", …)`, nunca `upsert`, porque el grant de update es solo sobre esas columnas y tocar `id` o `user_id` da 42501. El 23505 se convierte en «Ya tienes un hábito con ese nombre.».
 - [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.

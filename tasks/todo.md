@@ -17,7 +17,7 @@
   - Scripts: `"typecheck": "tsc --noEmit"`, `"test": "vitest run"`, `"check": "eslint --max-warnings=0 && tsc --noEmit && vitest run && next build"` y `"e2e": "playwright test"`.
   - `.env.example` con las 6 variables de `develop.md`, sin valores. La página de bienvenida del scaffold, sustituida por una página mínima de «Eslabón» (se diseña en T10).
   - Aceptación: `npm run check` → exit 0 con al menos un test real de Vitest. `npm run dev` sirve `/` con 200. No existen ni `AGENTS.md` ni `tmp-app/`.
-- [ ] **T02: CI en GitHub Actions** (XS)
+- [x] **T02: CI en GitHub Actions** (XS)
   - Aceptación: `.github/workflows/ci.yml` ejecuta `npm ci && npm run check` en cada push y PR, con Node 22. El build usa valores ficticios que no se parecen a claves reales (`NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=dummy`), para no disparar D-04.
   - Verificar: el YAML es válido. En verde tras el primer push (T12).
 - [ ] **T03: Lógica pura de fechas y rachas, con TDD** (M, sin UI)

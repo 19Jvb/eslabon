@@ -8,7 +8,7 @@
   - Verificar: Claude Code lista los agentes `develop` y `testing`. Los comandos de D-03 y D-04 detectan una trampa y una clave falsas en archivos nuevos (prueba en un repo temporal).
 
 ## Fase 1: Fundación
-- [ ] **T01: Scaffold de Next.js 16** (M, sin UI propia)
+- [x] **T01: Scaffold de Next.js 16** (M, sin UI propia)
   - create-next-app solo acepta una carpeta casi vacía y crea `AGENTS.md` por defecto. Por eso se genera aparte y se mueve:
     `npx create-next-app@16.4.6 tmp-app --ts --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --no-agents-md --no-agent-feedback --yes`
     (comprobado por el Orquestador: con esos flags no pide nada ni genera `AGENTS.md`).

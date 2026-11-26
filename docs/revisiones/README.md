@@ -9,3 +9,4 @@ Si la revisión sale **RECHAZADA**, el Orquestador devuelve a Develop los fallos
 | Tarea | Rondas | Fallos detectados | Informe final |
 |---|---|---|---|
 | T00 | n/a (los agentes aún no existían) | Revisión externa de los .md: 13 hallazgos aplicados (el crítico fue que los comandos no veían los archivos nuevos → `git add -A -N`) | — |
+| T01 | 1 | 0 (3 dudas de Develop arbitradas por el Orquestador) | [T01-r1](T01-r1.md) |

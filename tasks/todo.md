@@ -29,7 +29,7 @@
 ### Checkpoint A: el humano revisa los informes y las rondas de rechazo
 
 ## Fase 2: Supabase y Auth
-- [ ] **T04: Esquema, RLS y clientes de Supabase** (M, sin UI) · manual: el humano crea el proyecto y ejecuta el SQL
+- [x] **T04: Esquema, RLS y clientes de Supabase** (M, sin UI) · manual: el humano crea el proyecto y ejecuta el SQL
   - Aceptación:
     - `supabase/migrations/<timestamp>_init.sql` (creada con `npx supabase@latest migration new init`): las tablas, restricciones y RLS de SPEC §7.
     - **Protección de la cuenta demo:** un trigger `before update on auth.users` que lanza un error si cambia `email` o `encrypted_password` de un usuario con `raw_app_meta_data->>'demo' = 'true'`. La marca se pone a mano en el SQL Editor, así el email no queda escrito en el repo.
@@ -46,7 +46,9 @@
 
 ## Fase 3: Funcionalidades (todas con UI: Testing escribe primero los E2E)
 - [ ] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
+  - Heredado de T04-r2: para editar se usa `update({ name, color }).eq("id", …)`, nunca `upsert`, porque el grant de update es solo sobre esas columnas y tocar `id` o `user_id` da 42501. El 23505 se convierte en «Ya tienes un hábito con ese nombre.».
 - [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
+  - Heredado de T04-r2: marcar un día es un `insert`, y el 23505 se trata como «ya estaba marcado» (idempotente). Desmarcar es un `delete`. Nada de update ni de `upsert` con update (darían 42501).
   - Heredado de T03-r1 (sugerencias que pasan a ser criterios): si falta la cookie `tz`, o no es válida, se usa `Europe/Madrid`, nunca la zona del servidor. Los días que llegan del cliente se validan con `isEditableDay` antes de tocar la BD (`addDays` no valida: `2026-02-30` se normaliza sin avisar). Una línea en `dates.ts` deja claro ese contrato.
 - [ ] **T08: Estadísticas y mapa de calor de 12 semanas** (M): SPEC F5.
   - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
@@ -58,6 +60,7 @@
 
 ## Fase 4: Publicación
 - [ ] **T12: Repo en GitHub y despliegue en Vercel** · manual guiado
+  - Heredado de T04-r3: declarar en `supabase/config.jsonc` el `site_url` de producción y `additional_redirect_urls` (producción + localhost). Antes del `config push`, repetir `config diff` y confirmar que solo hay `update` declarados y esperados. Región de las funciones de Vercel: `fra1` (Supabase está en eu-central-1).
   - Aceptación: repo público `19Jvb/eslabon` con el CI en verde. Producción con las variables en Vercel y Deployment Protection desactivada.
   - Verificar: `curl -sI <prod>` sin cookies → 200 (no 401 ni redirección a vercel.com), y la ventana de incógnito del humano abre la app.
 - [ ] **T13: Keep-alive de Supabase** (XS) · manual: secrets de GitHub

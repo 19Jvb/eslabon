@@ -40,6 +40,9 @@
     - `/login` tiene «Email», «Contraseña» y el botón «Entrar». `/registro`, «Email», «Contraseña» y «Crear cuenta». Ambas, el botón «Probar con la cuenta demo».
     - Errores en español: «Email o contraseña incorrectos», «Ya existe una cuenta con ese email», «La contraseña debe tener al menos 8 caracteres».
     - `/app` sin sesión → `/login`. `/login` con sesión → `/app`. Botón «Cerrar sesión».
+    - `/app` (esqueleto, los hábitos llegan en T06): encabezado h1 «Tus hábitos» y el email del usuario visible. «Cerrar sesión» lleva a `/login`. `/registro` con sesión → `/app`. Tras un registro correcto se entra directamente en `/app` (no hay confirmación de email).
+    - Sin parámetro `?next=` (YAGNI): después del login siempre se va a `/app`.
+    - Cada `<title>` de página es descriptivo: «Entrar · Eslabón», «Crear cuenta · Eslabón» y «Tus hábitos · Eslabón».
   - Verificar: E2E de auth, RLS (D-06), cuenta demo protegida (D-06), axe (D-11) y 375 px (D-12).
 
 ### Checkpoint B: login demo funcionando en local

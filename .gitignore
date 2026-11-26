@@ -1,0 +1,27 @@
+# dependencias y builds
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# secretos: nunca al repo (solo .env.example)
+.env*
+!.env.example
+
+# tests
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# varios
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*
+
+# estado local de herramientas personales (no forma parte del proyecto)
+.omc/
+.claude/settings.local.json
+TRASPASO.md

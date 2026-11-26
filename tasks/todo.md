@@ -20,7 +20,7 @@
 - [x] **T02: CI en GitHub Actions** (XS)
   - Aceptación: `.github/workflows/ci.yml` ejecuta `npm ci && npm run check` en cada push y PR, con Node 22. El build usa valores ficticios que no se parecen a claves reales (`NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=dummy`), para no disparar D-04.
   - Verificar: el YAML es válido. En verde tras el primer push (T12).
-- [ ] **T03: Lógica pura de fechas y rachas, con TDD** (M, sin UI)
+- [x] **T03: Lógica pura de fechas y rachas, con TDD** (M, sin UI)
   - Aceptación:
     - `src/lib/dates.ts`: `todayIn(tz)`, `addDays`, `isEditableDay(day, today)` (de hoy a hoy−6).
     - `src/lib/streak.ts`: `currentStreak` (si hoy no está marcado, la racha que viene de ayer sigue viva), `bestStreak`, `completionRate(days, today, 30)` y `heatmapWeeks(days, today, 12)`.
@@ -47,7 +47,9 @@
 ## Fase 3: Funcionalidades (todas con UI: Testing escribe primero los E2E)
 - [ ] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
 - [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
+  - Heredado de T03-r1 (sugerencias que pasan a ser criterios): si falta la cookie `tz`, o no es válida, se usa `Europe/Madrid`, nunca la zona del servidor. Los días que llegan del cliente se validan con `isEditableDay` antes de tocar la BD (`addDays` no valida: `2026-02-30` se normaliza sin avisar). Una línea en `dates.ts` deja claro ese contrato.
 - [ ] **T08: Estadísticas y mapa de calor de 12 semanas** (M): SPEC F5.
+  - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
 - [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
 - [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1.
 - [ ] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.

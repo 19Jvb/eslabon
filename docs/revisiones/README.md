@@ -16,3 +16,4 @@ Si la revisión sale **RECHAZADA**, el Orquestador devuelve a Develop los fallos
 | T05 | 2 | r1: 1 (**un 500 en una Server Action dejaba la pantalla de error en inglés de Next**; Testing añadió 4 E2E) + 2 sugerencias pasadas a criterios | [T05-r2](T05-r2.md) |
 | T06 | 2 | r1: 1 (**mensaje crudo de zod en inglés con entradas manipuladas**; el mismo hueco se corrigió en auth) + 2 sugerencias pasadas a criterios | [T06-r2](T06-r2.md) |
 | T07 | 1 | 0 de la app. Testing corrigió 1 test suyo que estaba mal (lo detectó Develop como DISCREPANCIA) y Develop arregló una violación de WCAG 2.5.3 que imponía el contrato | [T07-r1](T07-r1.md) |
+| T08 | 1 | 0 bloqueantes. Testing reprodujo el corte de max_rows (1000 de 1050) contra el PostgREST real y validó la paginación; 3 sugerencias pasadas a T09 y T11 | [T08-r1](T08-r1.md) |

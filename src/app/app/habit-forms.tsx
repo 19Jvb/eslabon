@@ -1,9 +1,21 @@
 "use client";
 
-import { startTransition, useActionState, useId, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  createContext,
+  type ReactNode,
+  startTransition,
+  use,
+  useActionState,
+  useId,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Spinner } from "@/app/spinner";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, swatchClass } from "@/lib/habits";
+import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
 import { withFallback } from "@/lib/with-fallback";
 import { createHabit, deleteHabit, renameHabit, setCheckIn } from "./actions";
 
@@ -37,6 +49,22 @@ function ErrorMessage({ id, error }: { id: string; error: string | null }) {
     <p id={id} role="alert" className="text-sm font-medium text-red-700">
       {error}
     </p>
+  );
+}
+
+// A habit deleted in another tab takes its row (and any error shown in it) away when /app revalidates:
+// its message is shown above the list instead.
+const ListNotice = createContext<(error: string | null) => void>(() => {});
+
+export function HabitListNotice({ children }: { children: ReactNode }) {
+  const [notice, setNotice] = useState<string | null>(null);
+  const id = useId();
+
+  return (
+    <ListNotice value={setNotice}>
+      <ErrorMessage id={id} error={notice} />
+      {children}
+    </ListNotice>
   );
 }
 
@@ -153,50 +181,109 @@ function RenameForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
   );
 }
 
+const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
+
+const cellClass = (done: boolean, future: boolean) =>
+  future ? "border-dashed border-neutral-300" : done ? "border-emerald-700 bg-emerald-700" : "border-neutral-400";
+
+// Computed from the same optimistic days as the buttons, so they change (and roll back) together.
+function HabitStats({ name, marked, today }: { name: string; marked: string[]; today: string }) {
+  const stats = [
+    ["Racha actual", dayCount(currentStreak(marked, today))],
+    ["Mejor racha", dayCount(bestStreak(marked))],
+    ["Últimos 30 días", `${completionRate(marked, today)}\u00a0%`],
+  ];
+  const cells = heatmapWeeks(marked, today).flat();
+  const done = cells.filter((cell) => cell.done).length;
+  const past = cells.filter((cell) => !cell.future).length;
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <dl className="grid grid-cols-3 gap-2 sm:gap-4">
+        {stats.map(([term, value]) => (
+          <div key={term}>
+            <dt className="text-xs text-neutral-600">{term}</dt>
+            <dd className="font-semibold text-neutral-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {/* Weeks are columns (Monday on top): grid-flow-col fills the 7 rows of each column in order.
+          Done cells are filled, the rest only outlined (WCAG 1.4.1: not just a change of colour). */}
+      <div
+        role="img"
+        aria-label={`Historial de 12 semanas de ${name}: ${done} de ${past} días cumplidos`}
+        className="grid w-fit grid-flow-col grid-rows-7 gap-1"
+      >
+        {cells.map((cell) => (
+          <span
+            key={cell.day}
+            aria-hidden="true"
+            data-day={cell.day}
+            data-done={cell.done}
+            data-future={cell.future || undefined}
+            className={`size-4 rounded-sm border ${cellClass(cell.done, cell.future)}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
   const [shown, setShown] = useOptimistic(marked, (current, { day, done }: { day: string; done: boolean }) =>
     done ? [...current, day] : current.filter((d) => d !== day),
   );
   const [error, setError] = useState<string | null>(null);
+  const notify = use(ListNotice);
   const id = useId();
 
   // Sends the intent read from what is on screen, so a fast double click marks and then unmarks.
   function toggle(day: string) {
     const done = !shown.includes(day);
     setError(null);
+    notify(null);
     startTransition(async () => {
       setShown({ day, done });
       const result = await checkInAction({ habitId: habit.id, day, done });
-      if (!result.ok) setError(result.error);
+      if (result.ok) return;
+      if (result.error === HABIT_GONE) {
+        notify(result.error);
+        focusHeading();
+      } else {
+        setError(result.error);
+      }
     });
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex justify-between sm:justify-start sm:gap-2">
-        {days.map(({ day, label, initial, date }) => (
-          <button
-            key={day}
-            type="button"
-            data-day={day}
-            aria-pressed={shown.includes(day)}
-            onClick={() => toggle(day)}
-            className={`flex size-11 flex-col items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100 aria-pressed:border-emerald-700 aria-pressed:bg-emerald-700 aria-pressed:text-white aria-pressed:hover:bg-emerald-800 ${focusRing}`}
-          >
-            {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
-                does not contain the visible «J 26». */}
-            <span className="sr-only">{`${label}: ${habit.name}`}</span>
-            <span aria-hidden="true" className="text-xs leading-none">
-              {initial}
-            </span>
-            <span aria-hidden="true" className="text-sm leading-tight font-semibold">
-              {date}
-            </span>
-          </button>
-        ))}
+    <>
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between sm:justify-start sm:gap-2">
+          {days.map(({ day, label, initial, date }) => (
+            <button
+              key={day}
+              type="button"
+              data-day={day}
+              aria-pressed={shown.includes(day)}
+              onClick={() => toggle(day)}
+              className={`flex size-11 flex-col items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100 aria-pressed:border-emerald-700 aria-pressed:bg-emerald-700 aria-pressed:text-white aria-pressed:hover:bg-emerald-800 ${focusRing}`}
+            >
+              {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
+                  does not contain the visible «J 26». */}
+              <span className="sr-only">{`${label}: ${habit.name}`}</span>
+              <span aria-hidden="true" className="text-xs leading-none">
+                {initial}
+              </span>
+              <span aria-hidden="true" className="text-sm leading-tight font-semibold">
+                {date}
+              </span>
+            </button>
+          ))}
+        </div>
+        <ErrorMessage id={`${id}-error`} error={error} />
       </div>
-      <ErrorMessage id={`${id}-error`} error={error} />
-    </div>
+      <HabitStats name={habit.name} marked={shown} today={days[days.length - 1].day} />
+    </>
   );
 }
 

@@ -104,6 +104,12 @@ export async function setCheckIn(input: unknown): Promise<ActionResult> {
   const { error } = done
     ? await supabase.from("check_ins").insert({ habit_id: habitId, day })
     : await supabase.from("check_ins").delete().eq("habit_id", habitId).eq("day", day);
+  // The insert policy rejects (42501) a habit that is not the user's own, or no longer exists; 23503 is the FK
+  // if it is deleted between the policy check and the insert. Revalidating removes the row from the list.
+  if (done && (error?.code === "42501" || error?.code === "23503")) {
+    revalidatePath("/app");
+    return { ok: false, error: HABIT_GONE };
+  }
   if (error && !(done && error.code === "23505")) return { ok: false, error: GENERIC_ERROR };
 
   revalidatePath("/app");

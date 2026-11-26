@@ -210,3 +210,42 @@ export async function openApp(page: Page) {
   await page.goto("/app");
   await expect(heading(page)).toBeVisible();
 }
+
+// ---------- Días (T07 y T08) ----------
+
+export const MADRID = "Europe/Madrid";
+
+export const dayAt = (timeZone: string, at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone }).format(at);
+
+export const dayButton = (page: Page, tag: string, habit: string) => button(page, `${tag}: ${habit}`);
+
+/**
+ * Espera a que «Hoy» sea el día de la zona y lo devuelve. Para no fallar en falso al cruzar la medianoche,
+ * vale el día de ahora y el de hace 5 minutos (la página pudo pintarse justo antes).
+ */
+export async function shownToday(page: Page, habit: string, timeZone: string) {
+  const hoy = dayButton(page, "Hoy", habit);
+  await expect(hoy, `no hay un botón «Hoy: ${habit}»`).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const shown = await hoy.getAttribute("data-day", { timeout: 1000 });
+        const now = Date.now();
+        return shown === dayAt(timeZone, new Date(now)) || shown === dayAt(timeZone, new Date(now - 5 * 60_000));
+      },
+      { message: `el data-day de «Hoy: ${habit}» no es el día de ${timeZone}` },
+    )
+    .toBe(true);
+  return (await hoy.getAttribute("data-day"))!;
+}
+
+export async function marked(api: SupabaseClient, habitId: string) {
+  const { data, error } = await api.from("check_ins").select("day").eq("habit_id", habitId).order("day");
+  if (error) throw new Error(error.message);
+  return data.map((row) => row.day as string);
+}
+
+export async function mark(api: SupabaseClient, habitId: string, ...days: string[]) {
+  const { error } = await api.from("check_ins").insert(days.map((day) => ({ habit_id: habitId, day })));
+  if (error) throw new Error(`No se pudo sembrar el check-in: ${error.message}`);
+}

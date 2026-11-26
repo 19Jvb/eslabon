@@ -1,21 +1,25 @@
-import { type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page } from "@playwright/test";
 import {
   GENERIC,
+  MADRID,
   NOT_FORM_DATA,
   alert,
   announced,
   asciiPart,
-  button,
   cleanUp,
+  dayAt,
+  dayButton,
   expectFitsMobile,
   expectNoSeriousA11yViolations,
   failServerActions,
   item,
+  mark,
+  marked,
   openApp,
   prefix,
   seed,
   sendRewrittenAction,
+  shownToday,
   slowSubmits,
   tabTo,
   test,
@@ -27,7 +31,6 @@ import {
 // Riesgo que queda: si un test marca hoy−6 justo al cruzar la medianoche de la zona, el servidor ya lo ve como hoy−7.
 
 const RANGE = "Solo puedes marcar los últimos 7 días.";
-const MADRID = "Europe/Madrid";
 
 // El navegador en Madrid salvo donde se dice otra cosa: así el resultado no depende de la zona de la máquina (CI en UTC).
 test.use({ timezoneId: MADRID });
@@ -37,8 +40,6 @@ test.afterEach(async ({ api }) => {
 });
 
 // ---------- Fechas calculadas en el test (independientes de src/lib/dates.ts) ----------
-
-const dayAt = (timeZone: string, at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone }).format(at);
 
 function addDays(day: string, n: number) {
   const [y, m, d] = day.split("-").map(Number);
@@ -56,28 +57,6 @@ function label(day: string, today: string) {
 /** Los 7 días editables, de hoy−6 a hoy. */
 const week = (today: string) => Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
 
-const dayButton = (page: Page, tag: string, habit: string) => button(page, `${tag}: ${habit}`);
-
-/**
- * Espera a que «Hoy» sea el día de la zona y lo devuelve. Para no fallar en falso al cruzar la medianoche,
- * vale el día de ahora y el de hace 5 minutos (la página pudo pintarse justo antes).
- */
-async function shownToday(page: Page, habit: string, timeZone: string) {
-  const hoy = dayButton(page, "Hoy", habit);
-  await expect(hoy, `no hay un botón «Hoy: ${habit}»`).toBeVisible();
-  await expect
-    .poll(
-      async () => {
-        const shown = await hoy.getAttribute("data-day", { timeout: 1000 });
-        const now = Date.now();
-        return shown === dayAt(timeZone, new Date(now)) || shown === dayAt(timeZone, new Date(now - 5 * 60_000));
-      },
-      { message: `el data-day de «Hoy: ${habit}» no es el día de ${timeZone}` },
-    )
-    .toBe(true);
-  return (await hoy.getAttribute("data-day"))!;
-}
-
 /** La fila del hábito: 7 <button>, de hoy−6 a hoy, con su data-day, su nombre accesible y aria-pressed. */
 async function expectRow(page: Page, habit: string, today: string) {
   const buttons = item(page, habit).locator("button[data-day]");
@@ -87,17 +66,6 @@ async function expectRow(page: Page, habit: string, today: string) {
     await expect(buttons.nth(i)).toHaveAccessibleName(`${label(day, today)}: ${habit}`);
     await expect(buttons.nth(i)).toHaveAttribute("aria-pressed", /^(true|false)$/);
   }
-}
-
-async function marked(api: SupabaseClient, habitId: string) {
-  const { data, error } = await api.from("check_ins").select("day").eq("habit_id", habitId).order("day");
-  if (error) throw new Error(error.message);
-  return data.map((row) => row.day as string);
-}
-
-async function mark(api: SupabaseClient, habitId: string, ...days: string[]) {
-  const { error } = await api.from("check_ins").insert(days.map((day) => ({ habit_id: habitId, day })));
-  if (error) throw new Error(`No se pudo sembrar el check-in: ${error.message}`);
 }
 
 /** Lleva la cuenta de Server Actions en vuelo, para saber cuándo se ha asentado la UI. */

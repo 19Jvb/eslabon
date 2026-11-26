@@ -108,6 +108,13 @@ describe("completionRate", () => {
     expect(completionRate(["2028-02-01", "2028-02-29"], "2028-03-01")).toBe(7);
     expect(completionRate(["2028-01-31"], "2028-03-01")).toBe(0);
   });
+
+  it("una ventana que no es un entero positivo lanza un RangeError en vez de devolver NaN", () => {
+    for (const windowDays of [0, -1, 1.5, Number.NaN]) {
+      expect(() => completionRate(["2026-05-30"], today, windowDays)).toThrow(RangeError);
+    }
+    expect(completionRate(["2026-05-30"], today, 1)).toBe(100);
+  });
 });
 
 describe("heatmapWeeks", () => {
@@ -155,6 +162,16 @@ describe("heatmapWeeks", () => {
     expect(weeks[0][0].day).toBe("2026-12-21");
     expect(weeks[1][0].day).toBe("2026-12-28");
     expect(weeks[1].filter((c) => c.done).map((c) => c.day)).toEqual(["2026-12-31", "2027-01-01"]);
+  });
+
+  it("cruza el cambio de horario de marzo en Madrid (29-03-2026, 23 h) sin repetir ni saltar días", () => {
+    const weeks = heatmapWeeks(["2026-03-28", "2026-03-29", "2026-03-30"], "2026-04-02");
+    const flat = weeks.flat().map((c) => c.day);
+    expect(new Set(flat).size).toBe(84);
+    expect([...flat].sort()).toEqual(flat);
+    expect(weeks[10][6].day).toBe("2026-03-29"); // domingo, última fila
+    expect(weeks[11][0].day).toBe("2026-03-30"); // lunes, primera fila
+    expect(weeks.flat().filter((c) => c.done).map((c) => c.day)).toEqual(["2026-03-28", "2026-03-29", "2026-03-30"]);
   });
 
   it("cruza los cambios de horario sin repetir ni saltar días", () => {

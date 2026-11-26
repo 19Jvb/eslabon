@@ -27,6 +27,7 @@ export function bestStreak(days: Iterable<Day>): number {
 
 // Integer percentage of marked days in [today − (windowDays − 1), today].
 export function completionRate(days: Iterable<Day>, today: Day, windowDays = 30): number {
+  if (!Number.isInteger(windowDays) || windowDays < 1) throw new RangeError("windowDays must be a positive integer");
   const start = addDays(today, -(windowDays - 1));
   const inWindow = [...new Set(days)].filter((day) => start <= day && day <= today);
   return Math.round((inWindow.length * 100) / windowDays);

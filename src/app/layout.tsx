@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Eslabón",
+  title: { default: "Eslabón", template: "%s · Eslabón" },
   description: "Crea hábitos diarios, márcalos cada día y no rompas la cadena.",
 };
 

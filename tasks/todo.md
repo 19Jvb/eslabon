@@ -35,7 +35,7 @@
     - **Protección de la cuenta demo:** un trigger `before update on auth.users` que lanza un error si cambia `email` o `encrypted_password` de un usuario con `raw_app_meta_data->>'demo' = 'true'`. La marca se pone a mano en el SQL Editor, así el email no queda escrito en el repo.
     - Clientes de servidor y navegador con `@supabase/ssr`. Refresco de sesión en `proxy.ts`.
   - Verificar: el SQL se ejecuta sin errores. Sin sesión, una consulta con la publishable key devuelve 0 filas.
-- [ ] **T05: Auth: registro, login, logout y acceso demo** (M, con UI) · manual: el humano crea el usuario demo (lo marca como demo) y el de E2E. El Orquestador ejecuta `npx playwright install chromium`
+- [x] **T05: Auth: registro, login, logout y acceso demo** (M, con UI) · manual: el humano crea el usuario demo (lo marca como demo) y el de E2E. El Orquestador ejecuta `npx playwright install chromium`
   - Aceptación (con los nombres visibles exactos que usarán los E2E):
     - `/login` tiene «Email», «Contraseña» y el botón «Entrar». `/registro`, «Email», «Contraseña» y «Crear cuenta». Ambas, el botón «Probar con la cuenta demo».
     - Errores en español: «Email o contraseña incorrectos», «Ya existe una cuenta con ese email», «La contraseña debe tener al menos 8 caracteres».
@@ -49,6 +49,7 @@
 
 ## Fase 3: Funcionalidades (todas con UI: Testing escribe primero los E2E)
 - [ ] **T06: Hábitos: crear, listar, renombrar y borrar** (M): SPEC F3. Nombres visibles: «Nuevo hábito», «Nombre», «Crear», «Renombrar», «Borrar» y la confirmación «Sí, borrar».
+  - Heredado de T05-r1: con más rutas bajo /app, la comprobación de sesión sube a `src/app/app/layout.tsx`.
   - Heredado de T04-r2: para editar se usa `update({ name, color }).eq("id", …)`, nunca `upsert`, porque el grant de update es solo sobre esas columnas y tocar `id` o `user_id` da 42501. El 23505 se convierte en «Ya tienes un hábito con ese nombre.».
 - [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
   - Heredado de T04-r2: marcar un día es un `insert`, y el 23505 se trata como «ya estaba marcado» (idempotente). Desmarcar es un `delete`. Nada de update ni de `upsert` con update (darían 42501).
@@ -56,8 +57,9 @@
 - [ ] **T08: Estadísticas y mapa de calor de 12 semanas** (M): SPEC F5.
   - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
 - [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
-- [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1.
+- [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.
 - [ ] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.
+  - Heredado de T05-r2: si la acción falla con un 500, el formulario conserva el email escrito. Si cabe sin complicar, los formularios de auth también funcionan antes de que cargue el JS (mejora progresiva); si no, se documenta como limitación.
 
 ### Checkpoint C: flujo completo en local; el humano lo prueba
 

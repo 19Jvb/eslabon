@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { dayNames, lastWeek } from "@/lib/dates";
-import { fetchAll } from "@/lib/fetch-all";
+import { fetchAll, PAGE_SIZE } from "@/lib/fetch-all";
 import { HABITS_HEADING_ID } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
 import { userToday } from "@/lib/user-today";
-import { HabitItem, HabitListNotice, NewHabitForm } from "./habit-forms";
+import { HabitItem, HabitListNotice, LoadSampleForm, NewHabitForm } from "./habit-forms";
 
 export const metadata: Metadata = { title: "Tus hábitos" };
 // The list is rendered before the HTML is sent, not streamed behind <Suspense>: without JavaScript a
@@ -34,9 +34,14 @@ async function HabitList() {
   // Every check-in of every habit, not one query per habit: the best streak needs the whole history.
   const [{ data: habits, error }, checkIns] = await Promise.all([
     supabase.from("habits").select("id, name, color").order("created_at"),
-    fetchAll((from, to) =>
-      supabase.from("check_ins").select("habit_id, day", { count: "exact" }).order("habit_id").order("day").range(from, to),
-    ),
+    fetchAll<{ habit_id: string; day: string }>((after) => {
+      const query = supabase.from("check_ins").select("habit_id, day", { count: "exact" });
+      // Keyset on the primary key: the rows after (habit_id, day) of the last row read.
+      const rest = after
+        ? query.or(`habit_id.gt.${after.habit_id},and(habit_id.eq.${after.habit_id},day.gt.${after.day})`)
+        : query;
+      return rest.order("habit_id").order("day").limit(PAGE_SIZE);
+    }),
   ]);
 
   if (error || !checkIns) {
@@ -47,7 +52,14 @@ async function HabitList() {
     );
   }
   if (habits.length === 0) {
-    return <p className="text-neutral-700">Aún no tienes hábitos. Crea el primero con el formulario de abajo.</p>;
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <p className="text-neutral-700">
+          Aún no tienes hábitos. Crea el primero con el formulario de abajo o carga tres de ejemplo con su historial.
+        </p>
+        <LoadSampleForm />
+      </div>
+    );
   }
 
   const byHabit = Map.groupBy(checkIns, (checkIn) => checkIn.habit_id);

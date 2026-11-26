@@ -11,6 +11,7 @@ import {
   HabitRef,
   habitErrorMessage,
   NewHabit,
+  NoInput,
   OUT_OF_RANGE,
   RenameHabit,
 } from "@/lib/habits";
@@ -104,13 +105,37 @@ export async function setCheckIn(input: unknown): Promise<ActionResult> {
   const { error } = done
     ? await supabase.from("check_ins").insert({ habit_id: habitId, day })
     : await supabase.from("check_ins").delete().eq("habit_id", habitId).eq("day", day);
-  // The insert policy rejects (42501) a habit that is not the user's own, or no longer exists; 23503 is the FK
-  // if it is deleted between the policy check and the insert. Revalidating removes the row from the list.
+  // The insert policy rejects (42501) a habit that is not the user's own or no longer exists, but also a day outside
+  // its window or a revoked grant: only a habit that is really not there says so. 23503 is the FK, if it is deleted
+  // between the policy check and the insert. Revalidating removes the row from the list.
+  if (done && error?.code === "42501") {
+    const lookup = await supabase.from("habits").select("id").eq("id", habitId).maybeSingle();
+    if (lookup.error || lookup.data) return { ok: false, error: GENERIC_ERROR };
+  }
   if (done && (error?.code === "42501" || error?.code === "23503")) {
     revalidatePath("/app");
     return { ok: false, error: HABIT_GONE };
   }
   if (error && !(done && error.code === "23505")) return { ok: false, error: GENERIC_ERROR };
+
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+// Creates the 3 sample habits with their history only if the user has none (the SQL function checks it under a
+// per-user lock, so a double click or two tabs end with exactly 3). The day is the user's today from the tz cookie.
+export async function loadSampleData(input?: unknown): Promise<ActionResult> {
+  const parsed = NoInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return SESSION_EXPIRED;
+
+  const { error } = await supabase.rpc("load_sample_data", { p_today: await userToday() });
+  if (error) return { ok: false, error: GENERIC_ERROR };
 
   revalidatePath("/app");
   return { ok: true };

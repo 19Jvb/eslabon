@@ -67,7 +67,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            [_ in never]: never
+            "load_sample_data": {
+                  Args: { "p_today": string }
+                  Returns: undefined
+                }
           }
           Enums: {
             [_ in never]: never

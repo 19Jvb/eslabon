@@ -75,7 +75,7 @@
   - Sin dependencias nuevas: la rejilla se hace con CSS grid.
   - Heredado de T07-r1: marcar un día de un hábito ya borrado (en otra pestaña) responde «Ese hábito ya no existe.» y revalida /app, igual que renombrar y borrar. La consulta de check_ins de las estadísticas no puede cortar filas sin avisar por el `max_rows` de 1000 de PostgREST: o se acota el número de hábitos por usuario (con una restricción en la BD) o se pagina, y se elige lo más simple que sea correcto.
   - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
-- [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
+- [x] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
   - En el estado vacío de /app (0 hábitos) aparece el botón «Cargar datos de ejemplo». Con 1 hábito o más, no aparece.
   - Al pulsarlo se crean exactamente 3 hábitos: «Leer 20 minutos» (azul), «Caminar 30 minutos» (verde) y «Beber 2 litros de agua» (ámbar). Tienen unos 60 días de historial **deterministas** (un patrón fijo según el desplazamiento del día, sin azar, para poder testearlo) y realistas: rachas variadas, algún hueco y una mejor racha mayor que la actual en al menos uno. **Hoy queda sin marcar** en los 3, para que quien evalúe lo marque y vea subir la racha.
   - Idempotente: con hábitos ya existentes no hace nada. El doble clic o dos llamadas a la vez dejan exactamente 3 hábitos (sin duplicados ni error crudo).
@@ -109,5 +109,5 @@
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.
 
 ## Fase 5: Entrega
-- [ ] **T15: README** (URL, cuenta demo, diagrama del equipo, cómo ejecutarlo y decisiones) **y escaneo de secretos en todo el historial** (`git log -p` con los patrones de D-04).
+- [ ] **T15: README** Documentar en «Decisiones» los dos avisos de `db advisors`: (1) `authenticated_security_definer_function_executable` sobre load_sample_data, que es intencionado y está blindado (T09-r1a); (2) `auth_leaked_password_protection`, que hay que comprobar si el plan Free lo permite y activarlo, y si no, documentarlo. (URL, cuenta demo, diagrama del equipo, cómo ejecutarlo y decisiones) **y escaneo de secretos en todo el historial** (`git log -p` con los patrones de D-04).
 - [ ] **T16: Respuestas a las 4 preguntas** (borrador del Orquestador; el humano lo revisa y le pone su voz).

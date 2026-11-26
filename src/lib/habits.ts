@@ -37,6 +37,9 @@ export const HabitRef = z.object({ id: HabitId }, GENERIC_ERROR);
 // The day's range depends on the user's today, so the action checks it with isEditableDay.
 export const CheckIn = z.object({ habitId: HabitId, day: z.string(GENERIC_ERROR), done: z.boolean(GENERIC_ERROR) }, GENERIC_ERROR);
 
+// loadSampleData takes nothing from the client: anything sent (a forged request) is rejected.
+export const NoInput = z.undefined(GENERIC_ERROR);
+
 export const OUT_OF_RANGE = "Solo puedes marcar los últimos 7 días.";
 
 export const HABIT_GONE = "Ese hábito ya no existe.";

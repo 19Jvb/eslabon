@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "../src/lib/streak";
 import { test as base, expect, type BrowserContext, type Locator, type Page, type Route } from "@playwright/test";
 
 export const APP_URL = /\/app\/?$/;
@@ -143,7 +144,9 @@ export const asciiPart = (message: string) => message.split(/[^\x20-\x7e]/)[0];
 export const NOT_FORM_DATA = ['["x"]', "[]", "[null]", "[42]"];
 
 // ---------- Usuario de E2E: sesión compartida y datos por la API ----------
-// Supuesto: el usuario de E2E no tiene hábitos que no empiecen por «e2e-».
+// Supuesto: el usuario de E2E es SOLO para los tests. Fuera de una prueba no tiene hábitos, y sample.spec (T09) borra
+// TODOS sus hábitos al empezar y al terminar cada test, porque los datos de ejemplo tienen nombres fijos (no «e2e-»).
+// La cuenta demo no se toca nunca desde estos tests (solo rls.spec, con sus «e2e-%»).
 // Los datos se siembran y se borran por la API, como el propio usuario (RLS), con la publishable key.
 
 type Session = { storageState: Awaited<ReturnType<BrowserContext["storageState"]>>; accessToken: string };
@@ -178,7 +181,8 @@ export const test = base.extend<{ api: SupabaseClient }, { session: Session }>({
   api: ({ session }, provide) => provide(apiClient(session.accessToken)),
 });
 
-function apiClient(accessToken?: string) {
+/** Cliente de la API con la publishable key: anónimo, o como un usuario si se le pasa su token. */
+export function apiClient(accessToken?: string) {
   return createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
     global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
@@ -187,6 +191,12 @@ function apiClient(accessToken?: string) {
 
 /** ilike: también borra lo que un fallo hubiera creado en mayúsculas («E2E-…»). Los check-ins caen en cascada. */
 export const cleanUp = (api: SupabaseClient) => api.from("habits").delete().ilike("name", "e2e-%");
+
+/** Deja al usuario de E2E sin ningún hábito (la RLS limita el borrado a los suyos). Solo para el usuario de E2E. */
+export async function wipeAll(api: SupabaseClient) {
+  const { error } = await api.from("habits").delete().not("id", "is", null);
+  if (error) throw new Error(`No se pudieron borrar los hábitos del usuario de E2E: ${error.message}`);
+}
 
 /** Inserta en orden (uno tras otro, para que created_at los ordene) y devuelve los id. */
 export async function seed(api: SupabaseClient, ...habits: { name: string; color?: string }[]) {
@@ -248,4 +258,90 @@ export async function marked(api: SupabaseClient, habitId: string) {
 export async function mark(api: SupabaseClient, habitId: string, ...days: string[]) {
   const { error } = await api.from("check_ins").insert(days.map((day) => ({ habit_id: habitId, day })));
   if (error) throw new Error(`No se pudo sembrar el check-in: ${error.message}`);
+}
+
+// ---------- Estadísticas y mapa (T08, y T09 con el historial largo) ----------
+// Lo esperado sale de src/lib/streak.ts (aprobada en T03) sobre los días reales de la BD y el «hoy» que pinta la app.
+
+export const days = (n: number) => `${n} ${n === 1 ? "día" : "días"}`;
+
+/** Lo que tiene que decir la <dl> para esos días marcados y ese «hoy». */
+export const expectedStats = (marks: string[], today: string) => ({
+  "Racha actual": days(currentStreak(marks, today)),
+  "Mejor racha": days(bestStreak(marks)),
+  "Últimos 30 días": `${completionRate(marks, today)} %`,
+});
+
+/** Los pares <dt>/<dd> de cada <dl> del hábito (tiene que haber una), con los espacios normalizados (vale el espacio duro). */
+export const readStats = (page: Page, habit: string) =>
+  item(page, habit)
+    .locator("dl")
+    .evaluateAll((dls) =>
+      dls.map((dl) =>
+        [...dl.querySelectorAll("dt")].map((dt) => {
+          const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+          const dd = dt.nextElementSibling?.tagName === "DD" ? dt.nextElementSibling.textContent : null;
+          return [clean(dt.textContent), clean(dd)];
+        }),
+      ),
+    );
+
+export async function expectStats(page: Page, habit: string, marks: string[], today: string) {
+  const expected = expectedStats(marks, today);
+  await expect
+    .poll(() => readStats(page, habit), { message: `una <dl> con las estadísticas de «${habit}»` })
+    .toEqual([Object.entries(expected)]);
+}
+
+export const heatmap = (page: Page, habit: string) =>
+  item(page, habit).getByRole("img", { name: /^Historial de 12 semanas de / });
+
+/**
+ * El mapa: role="img" con «Historial de 12 semanas de <hábito>: N de M días cumplidos», 84 celdas [data-day] ocultas
+ * (aria-hidden) en 12 columnas (semanas, la última la de hoy) × 7 filas (lunes a domingo), con data-done y data-future.
+ */
+export async function expectHeatmap(page: Page, habit: string, marks: string[], today: string) {
+  const grid = heatmapWeeks(marks, today);
+  const flat = grid.flat();
+  const done = flat.filter((c) => c.done).length;
+  const past = flat.filter((c) => !c.future).length;
+  const heat = heatmap(page, habit);
+  await expect(heat, `mapa de «${habit}»`).toHaveCount(1);
+  await expect(heat).toHaveAccessibleName(`Historial de 12 semanas de ${habit}: ${done} de ${past} días cumplidos`);
+
+  const readCells = () =>
+    heat.locator("[data-day]").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        const hidden = el.closest('[aria-hidden="true"]');
+        const img = el.closest('[role="img"]');
+        return {
+          day: el.getAttribute("data-day"),
+          done: el.getAttribute("data-done"),
+          future: el.getAttribute("data-future"),
+          hidden: hidden !== null && img !== null && img.contains(hidden),
+          x: r.left + r.width / 2,
+          y: r.top + r.height / 2,
+          w: r.width,
+          h: r.height,
+        };
+      }),
+    );
+  const states = (cells: Awaited<ReturnType<typeof readCells>>) =>
+    cells.map((c) => `${c.day} done=${c.done} future=${c.future === "true"} hidden=${c.hidden}`).sort();
+  const expected = flat.map((c) => `${c.day} done=${c.done} future=${c.future} hidden=true`).sort();
+  await expect.poll(async () => states(await readCells()), { message: `celdas de «${habit}»` }).toEqual(expected);
+
+  const byDay = new Map((await readCells()).map((c) => [c.day, c]));
+  const at = (w: number, d: number) => byDay.get(grid[w][d].day)!;
+  for (const c of byDay.values()) expect(c.w > 0 && c.h > 0, `la celda ${c.day} se ve`).toBe(true);
+  for (let w = 0; w < 12; w++) {
+    for (let d = 0; d < 7; d++) {
+      const cell = at(w, d);
+      expect(Math.abs(cell.x - at(w, 0).x), `${cell.day}: en la columna de su semana`).toBeLessThan(1);
+      expect(Math.abs(cell.y - at(0, d).y), `${cell.day}: en la fila de su día de la semana`).toBeLessThan(1);
+      if (w > 0) expect(cell.x, `${cell.day}: semana a la derecha de la anterior`).toBeGreaterThan(at(w - 1, d).x);
+      if (d > 0) expect(cell.y, `${cell.day}: debajo del día anterior`).toBeGreaterThan(at(w, d - 1).y);
+    }
+  }
 }

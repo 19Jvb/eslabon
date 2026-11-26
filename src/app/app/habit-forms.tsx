@@ -17,13 +17,14 @@ import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, swatchClass } from "@/lib/habits";
 import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
 import { withFallback } from "@/lib/with-fallback";
-import { createHabit, deleteHabit, renameHabit, setCheckIn } from "./actions";
+import { createHabit, deleteHabit, loadSampleData, renameHabit, setCheckIn } from "./actions";
 
 const failed: ActionResult = { ok: false, error: GENERIC_ERROR };
 const createAction = withFallback(createHabit, failed);
 const renameAction = withFallback(renameHabit, failed);
 const deleteAction = withFallback(deleteHabit, failed);
 const checkInAction = withFallback(setCheckIn, failed);
+const loadSampleAction = withFallback(loadSampleData, failed);
 
 // The revalidated list drops the row that holds focus: send it to the page h1 instead.
 function focusHeading() {
@@ -128,6 +129,27 @@ export function NewHabitForm() {
         </button>
       </form>
     </section>
+  );
+}
+
+// Only rendered with 0 habits: on success the revalidated list replaces it, so focus goes to the h1.
+export function LoadSampleForm() {
+  const [error, submit, pending] = useActionState(async (): Promise<string | null> => {
+    const result = await loadSampleAction();
+    if (!result.ok) return result.error;
+    focusHeading();
+    return null;
+  }, null);
+  const id = useId();
+
+  return (
+    <form action={submit} className="flex flex-col items-start gap-2">
+      <button type="submit" disabled={pending} className={secondaryButton}>
+        {pending && <Spinner />}
+        Cargar datos de ejemplo
+      </button>
+      <ErrorMessage id={`${id}-error`} error={error} />
+    </form>
   );
 }
 

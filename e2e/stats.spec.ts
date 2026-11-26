@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { addDays } from "../src/lib/dates";
-import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "../src/lib/streak";
+import { heatmapWeeks } from "../src/lib/streak";
 import {
   GENERIC,
   MADRID,
@@ -9,13 +9,18 @@ import {
   dayAt,
   dayButton,
   expectFitsMobile,
+  expectHeatmap,
+  expectStats,
+  expectedStats,
   expectNoSeriousA11yViolations,
   failServerActions,
+  heatmap,
   item,
   mark,
   marked,
   openApp,
   prefix,
+  readStats,
   seed,
   shownToday,
   tabTo,
@@ -40,89 +45,6 @@ test.use({ timezoneId: MADRID });
 test.afterEach(async ({ api }) => {
   await cleanUp(api);
 });
-
-const days = (n: number) => `${n} ${n === 1 ? "día" : "días"}`;
-
-/** Lo que tiene que decir la <dl> para esos días marcados y ese «hoy». */
-const expectedStats = (marks: string[], today: string) => ({
-  "Racha actual": days(currentStreak(marks, today)),
-  "Mejor racha": days(bestStreak(marks)),
-  "Últimos 30 días": `${completionRate(marks, today)} %`,
-});
-
-/** Los pares <dt>/<dd> de cada <dl> del hábito (tiene que haber una), con los espacios normalizados (vale el espacio duro). */
-const readStats = (page: Page, habit: string) =>
-  item(page, habit)
-    .locator("dl")
-    .evaluateAll((dls) =>
-      dls.map((dl) =>
-        [...dl.querySelectorAll("dt")].map((dt) => {
-          const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
-          const dd = dt.nextElementSibling?.tagName === "DD" ? dt.nextElementSibling.textContent : null;
-          return [clean(dt.textContent), clean(dd)];
-        }),
-      ),
-    );
-
-async function expectStats(page: Page, habit: string, marks: string[], today: string) {
-  const expected = expectedStats(marks, today);
-  await expect
-    .poll(() => readStats(page, habit), { message: `una <dl> con las estadísticas de «${habit}»` })
-    .toEqual([Object.entries(expected)]);
-}
-
-const heatmap = (page: Page, habit: string) =>
-  item(page, habit).getByRole("img", { name: /^Historial de 12 semanas de / });
-
-/**
- * El mapa: role="img" con «Historial de 12 semanas de <hábito>: N de M días cumplidos», 84 celdas [data-day] ocultas
- * (aria-hidden) en 12 columnas (semanas, la última la de hoy) × 7 filas (lunes a domingo), con data-done y data-future.
- */
-async function expectHeatmap(page: Page, habit: string, marks: string[], today: string) {
-  const grid = heatmapWeeks(marks, today);
-  const flat = grid.flat();
-  const done = flat.filter((c) => c.done).length;
-  const past = flat.filter((c) => !c.future).length;
-  const heat = heatmap(page, habit);
-  await expect(heat, `mapa de «${habit}»`).toHaveCount(1);
-  await expect(heat).toHaveAccessibleName(`Historial de 12 semanas de ${habit}: ${done} de ${past} días cumplidos`);
-
-  const readCells = () =>
-    heat.locator("[data-day]").evaluateAll((els) =>
-      els.map((el) => {
-        const r = el.getBoundingClientRect();
-        const hidden = el.closest('[aria-hidden="true"]');
-        const img = el.closest('[role="img"]');
-        return {
-          day: el.getAttribute("data-day"),
-          done: el.getAttribute("data-done"),
-          future: el.getAttribute("data-future"),
-          hidden: hidden !== null && img !== null && img.contains(hidden),
-          x: r.left + r.width / 2,
-          y: r.top + r.height / 2,
-          w: r.width,
-          h: r.height,
-        };
-      }),
-    );
-  const states = (cells: Awaited<ReturnType<typeof readCells>>) =>
-    cells.map((c) => `${c.day} done=${c.done} future=${c.future === "true"} hidden=${c.hidden}`).sort();
-  const expected = flat.map((c) => `${c.day} done=${c.done} future=${c.future} hidden=true`).sort();
-  await expect.poll(async () => states(await readCells()), { message: `celdas de «${habit}»` }).toEqual(expected);
-
-  const byDay = new Map((await readCells()).map((c) => [c.day, c]));
-  const at = (w: number, d: number) => byDay.get(grid[w][d].day)!;
-  for (const c of byDay.values()) expect(c.w > 0 && c.h > 0, `la celda ${c.day} se ve`).toBe(true);
-  for (let w = 0; w < 12; w++) {
-    for (let d = 0; d < 7; d++) {
-      const cell = at(w, d);
-      expect(Math.abs(cell.x - at(w, 0).x), `${cell.day}: en la columna de su semana`).toBeLessThan(1);
-      expect(Math.abs(cell.y - at(0, d).y), `${cell.day}: en la fila de su día de la semana`).toBeLessThan(1);
-      if (w > 0) expect(cell.x, `${cell.day}: semana a la derecha de la anterior`).toBeGreaterThan(at(w - 1, d).x);
-      if (d > 0) expect(cell.y, `${cell.day}: debajo del día anterior`).toBeGreaterThan(at(w, d - 1).y);
-    }
-  }
-}
 
 /** Siembra un hábito con días relativos a hoy (Madrid), abre /app y devuelve el «hoy» pintado y los días de la BD. */
 async function seedAndOpen(page: Page, api: Parameters<typeof mark>[0], habit: string, offsets: number[]) {

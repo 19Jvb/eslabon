@@ -61,6 +61,8 @@ Revisión: docs/revisiones/T05-r2.md (APROBADO en la ronda 2; la ronda 1 se rech
 ```
 Tipos: `feat`, `fix`, `test`, `chore`, `docs`, `ci`. Incluye siempre el ID de la tarea.
 
+**Commits del Orquestador a mitad de una tarea** (por ejemplo, para corregir una guía): usa siempre `git commit -o <ruta>`. El índice guarda la foto de la ronda, y un `git commit` normal se la llevaría entera. Ya pasó una vez, en T06, y se deshizo con `git reset --soft HEAD~1`.
+
 ## Plantilla del ENCARGO para Develop
 ```
 TAREA: Txx: <título>    RONDA: N

@@ -31,7 +31,7 @@
 ## Fase 2: Supabase y Auth
 - [ ] **T04: Esquema, RLS y clientes de Supabase** (M, sin UI) · manual: el humano crea el proyecto y ejecuta el SQL
   - Aceptación:
-    - `supabase/migrations/0001_init.sql`: las tablas, restricciones y RLS de SPEC §7.
+    - `supabase/migrations/<timestamp>_init.sql` (creada con `npx supabase@latest migration new init`): las tablas, restricciones y RLS de SPEC §7.
     - **Protección de la cuenta demo:** un trigger `before update on auth.users` que lanza un error si cambia `email` o `encrypted_password` de un usuario con `raw_app_meta_data->>'demo' = 'true'`. La marca se pone a mano en el SQL Editor, así el email no queda escrito en el repo.
     - Clientes de servidor y navegador con `@supabase/ssr`. Refresco de sesión en `proxy.ts`.
   - Verificar: el SQL se ejecuta sin errores. Sin sesión, una consulta con la publishable key devuelve 0 filas.

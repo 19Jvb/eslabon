@@ -69,7 +69,7 @@ export async function renameHabit(input: unknown): Promise<ActionResult> {
 ```
 
 - **Fechas → cumple D-08 y D-09.** Un día es siempre un string `'YYYY-MM-DD'`. El «hoy» del usuario se obtiene **solo** con `todayIn(timeZone)` de `src/lib/dates.ts`: el servidor de Vercel funciona en UTC y el usuario no. La aritmética de días se hace en UTC puro (`Date.UTC`), así el cambio de horario no la afecta.
-- **Supabase → cumple D-05 y D-06.** Clientes en `src/lib/supabase/{server,client}.ts` con `@supabase/ssr`. Solo se usa la publishable key. La `service_role` no existe para ti. Los cambios de esquema van **siempre** en una migración nueva en `supabase/migrations/NNNN_descripcion.sql`, con RLS y políticas por operación.
+- **Supabase → cumple D-05 y D-06.** Clientes en `src/lib/supabase/{server,client}.ts` con `@supabase/ssr`. Solo se usa la publishable key. La `service_role` no existe para ti. Los cambios de esquema van **siempre** en una migración nueva, creada con `npx supabase@latest migration new <nombre>` (`supabase/migrations/<timestamp>_<nombre>.sql`), con RLS y políticas por operación.
 - **Variables de entorno → cumple D-04.** Las únicas del proyecto (todas listadas sin valor en `.env.example`):
   | Variable | Dónde se usa |
   |---|---|

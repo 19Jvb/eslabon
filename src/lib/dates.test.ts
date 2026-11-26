@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, isEditableDay, isValidDay, todayIn } from "@/lib/dates";
+import { addDays, dayNames, isEditableDay, isValidDay, lastWeek, todayIn } from "@/lib/dates";
 
 describe("todayIn", () => {
   it("devuelve el día local en formato YYYY-MM-DD", () => {
@@ -123,5 +123,54 @@ describe("isEditableDay", () => {
   it("cruza el fin de año", () => {
     expect(isEditableDay("2026-12-27", "2027-01-02")).toBe(true);
     expect(isEditableDay("2026-12-26", "2027-01-02")).toBe(false);
+  });
+});
+
+describe("lastWeek", () => {
+  it("devuelve los 7 días editables de hoy−6 a hoy, en orden", () => {
+    expect(lastWeek("2026-11-26")).toEqual(["2026-11-20", "2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26"]);
+  });
+
+  it("cruza el fin de mes, de año y el 29 de febrero", () => {
+    expect(lastWeek("2026-03-02")).toEqual(["2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"]);
+    expect(lastWeek("2027-01-03")[0]).toBe("2026-12-28");
+    expect(lastWeek("2028-03-01").slice(-2)).toEqual(["2028-02-29", "2028-03-01"]);
+  });
+
+  it("cada día es editable desde hoy, y el anterior y el siguiente no", () => {
+    const today = "2026-11-26";
+    const week = lastWeek(today);
+    expect(week.every((day) => isEditableDay(day, today))).toBe(true);
+    expect(isEditableDay(addDays(week[0], -1), today)).toBe(false);
+    expect(isEditableDay(addDays(today, 1), today)).toBe(false);
+  });
+});
+
+describe("dayNames", () => {
+  const today = "2026-11-26"; // jueves
+
+  it("llama «Hoy» a hoy y «Ayer» a ayer, con su inicial y su número", () => {
+    expect(dayNames(today, today)).toEqual({ label: "Hoy", initial: "J", date: 26 });
+    expect(dayNames("2026-11-25", today)).toEqual({ label: "Ayer", initial: "X", date: 25 });
+  });
+
+  it("al resto, por el día de la semana con mayúscula y su número", () => {
+    expect(dayNames("2026-11-23", today)).toEqual({ label: "Lunes 23", initial: "L", date: 23 });
+    expect(dayNames("2026-11-24", today).label).toBe("Martes 24");
+    expect(dayNames("2026-11-21", today).label).toBe("Sábado 21");
+    expect(dayNames("2026-11-20", today)).toEqual({ label: "Viernes 20", initial: "V", date: 20 });
+  });
+
+  it("cruza el cambio de mes y de año: ayer es el último día del mes anterior", () => {
+    expect(dayNames("2026-11-30", "2026-12-01").label).toBe("Ayer");
+    expect(dayNames("2026-11-29", "2026-12-01")).toEqual({ label: "Domingo 29", initial: "D", date: 29 });
+    expect(dayNames("2026-12-31", "2027-01-01").label).toBe("Ayer");
+    expect(dayNames("2026-12-28", "2027-01-01").label).toBe("Lunes 28");
+  });
+
+  it("el día de la semana es el del calendario, también en el cambio de horario de Madrid", () => {
+    expect(dayNames("2026-03-29", "2026-03-31").label).toBe("Domingo 29");
+    expect(dayNames("2026-10-25", "2026-10-27").label).toBe("Domingo 25");
+    expect(dayNames("2028-02-29", "2028-03-02").label).toBe("Martes 29");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLOR_IDS, HABIT_COLORS, HabitRef, habitErrorMessage, NewHabit, RenameHabit, swatchClass } from "./habits";
+import { CheckIn, COLOR_IDS, HABIT_COLORS, HabitRef, habitErrorMessage, NewHabit, RenameHabit, swatchClass } from "./habits";
 
 const ID = "3f1c2a7e-9b4d-4e2a-8c1f-5d6e7f809a1b";
 const firstMessage = (result: { error?: { issues: { message: string }[] } }) => result.error?.issues[0].message;
@@ -60,9 +60,25 @@ describe("RenameHabit and HabitRef", () => {
   });
 });
 
+describe("CheckIn", () => {
+  it("accepts a habit id, a day and the intent (mark or unmark)", () => {
+    expect(CheckIn.parse({ habitId: ID, day: "2026-11-26", done: true })).toEqual({ habitId: ID, day: "2026-11-26", done: true });
+    expect(CheckIn.parse({ habitId: ID, day: "2026-11-26", done: false }).done).toBe(false);
+  });
+
+  it.each([
+    { habitId: "1", day: "2026-11-26", done: true },
+    { habitId: ID, day: 20261126, done: true },
+    { habitId: ID, day: "2026-11-26", done: "true" },
+    { habitId: ID, day: "2026-11-26" },
+  ])("rejects %j with the generic message", (input) => {
+    expect(firstMessage(CheckIn.safeParse(input))).toBe("No se pudo completar. Inténtalo de nuevo.");
+  });
+});
+
 describe("input that is not an object", () => {
   it.each([undefined, null, "x", 42, []])("answers %j with the generic Spanish message", (input) => {
-    for (const schema of [NewHabit, RenameHabit, HabitRef]) {
+    for (const schema of [NewHabit, RenameHabit, HabitRef, CheckIn]) {
       expect(firstMessage(schema.safeParse(input))).toBe("No se pudo completar. Inténtalo de nuevo.");
     }
   });

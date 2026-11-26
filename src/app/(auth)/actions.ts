@@ -11,7 +11,9 @@ function fieldError(issue: { message: string; path: PropertyKey[] }, email: unkn
   return { error: issue.message, field, email: typeof email === "string" ? email : undefined };
 }
 
-export async function signIn(_prev: AuthState, formData: FormData): Promise<AuthState> {
+// A forged request can send anything instead of FormData: answer it, never a 500.
+export async function signIn(_prev: AuthState, formData: unknown): Promise<AuthState> {
+  if (!(formData instanceof FormData)) return { error: GENERIC_ERROR };
   const input = Object.fromEntries(formData);
   const parsed = Credentials.safeParse(input);
   if (!parsed.success) return fieldError(parsed.error.issues[0], input.email);
@@ -23,7 +25,8 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   redirect("/app");
 }
 
-export async function signUp(_prev: AuthState, formData: FormData): Promise<AuthState> {
+export async function signUp(_prev: AuthState, formData: unknown): Promise<AuthState> {
+  if (!(formData instanceof FormData)) return { error: GENERIC_ERROR };
   const input = Object.fromEntries(formData);
   const parsed = NewAccount.safeParse(input);
   if (!parsed.success) return fieldError(parsed.error.issues[0], input.email);

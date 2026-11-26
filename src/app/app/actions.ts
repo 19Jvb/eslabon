@@ -3,8 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { GENERIC_ERROR } from "@/lib/auth";
-import { type ActionResult, HABIT_GONE, HabitRef, habitErrorMessage, NewHabit, RenameHabit } from "@/lib/habits";
+import { isEditableDay } from "@/lib/dates";
+import {
+  type ActionResult,
+  CheckIn,
+  HABIT_GONE,
+  HabitRef,
+  habitErrorMessage,
+  NewHabit,
+  OUT_OF_RANGE,
+  RenameHabit,
+} from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
+import { userToday } from "@/lib/user-today";
 
 type SignOutState = { error: string } | null;
 
@@ -74,4 +85,27 @@ export async function deleteHabit(input: unknown): Promise<ActionResult> {
 
   revalidatePath("/app");
   return count === 1 ? { ok: true } : { ok: false, error: HABIT_GONE };
+}
+
+// Insert to mark and delete to unmark, never update or upsert (check_ins has no update grant).
+// Both are idempotent: the row already there (23505) or already gone is the state the user asked for.
+export async function setCheckIn(input: unknown): Promise<ActionResult> {
+  const parsed = CheckIn.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { habitId, day, done } = parsed.data;
+  if (!isEditableDay(day, await userToday())) return { ok: false, error: OUT_OF_RANGE };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return SESSION_EXPIRED;
+
+  const { error } = done
+    ? await supabase.from("check_ins").insert({ habit_id: habitId, day })
+    : await supabase.from("check_ins").delete().eq("habit_id", habitId).eq("day", day);
+  if (error && !(done && error.code === "23505")) return { ok: false, error: GENERIC_ERROR };
+
+  revalidatePath("/app");
+  return { ok: true };
 }

@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutForm } from "./sign-out-form";
+import { TimeZoneCookie } from "./time-zone-cookie";
 
 // The session check lives here so every route under /app gets it.
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -17,6 +18,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
       {children}
+      <TimeZoneCookie />
     </div>
   );
 }

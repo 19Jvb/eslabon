@@ -58,7 +58,7 @@
   - Fuera de alcance: cambiar el color de un hábito ya creado.
   - Heredado de T05-r1: con más rutas bajo /app, la comprobación de sesión sube a `src/app/app/layout.tsx`.
   - Heredado de T04-r2: para editar se usa `update({ name, color }).eq("id", …)`, nunca `upsert`, porque el grant de update es solo sobre esas columnas y tocar `id` o `user_id` da 42501. El 23505 se convierte en «Ya tienes un hábito con ese nombre.».
-- [ ] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
+- [x] **T07: Marcar y desmarcar días** (hoy y los 6 anteriores), cookie de zona horaria y UI optimista (M): SPEC F4 y D-10.
   - Cada hábito de la lista muestra una fila con sus **7 últimos días** (de hoy−6 a hoy, de izquierda a derecha). Cada día es un `<button>` con `aria-pressed` (true = marcado) y el atributo `data-day="YYYY-MM-DD"` (el contrato para los tests).
   - Nombre accesible de cada botón: `«<etiqueta>: <nombre del hábito>»`. La etiqueta es «Hoy» para hoy, «Ayer» para ayer, y para el resto el día de la semana con mayúscula y el número del día (p. ej. «Lunes 23»), calculados en la zona del usuario. Visualmente cada botón muestra la inicial del día y el número.
   - Pulsar cambia el estado al instante (UI optimista con `useOptimistic`). Si la acción falla: vuelve al estado anterior y sale el genérico en `role="alert"`. Tras un doble clic rápido, el estado de la UI coincide con el de la BD al recargar.
@@ -69,6 +69,7 @@
   - Heredado de T04-r2: marcar un día es un `insert`, y el 23505 se trata como «ya estaba marcado» (idempotente). Desmarcar es un `delete`. Nada de update ni de `upsert` con update (darían 42501).
   - Heredado de T03-r1 (sugerencias que pasan a ser criterios): si falta la cookie `tz`, o no es válida, se usa `Europe/Madrid`, nunca la zona del servidor. Los días que llegan del cliente se validan con `isEditableDay` antes de tocar la BD (`addDays` no valida: `2026-02-30` se normaliza sin avisar). Una línea en `dates.ts` deja claro ese contrato.
 - [ ] **T08: Estadísticas y mapa de calor de 12 semanas** (M): SPEC F5.
+  - Heredado de T07-r1: marcar un día de un hábito ya borrado (en otra pestaña) responde «Ese hábito ya no existe.» y revalida /app, igual que renombrar y borrar. La consulta de check_ins de las estadísticas no puede cortar filas sin avisar por el `max_rows` de 1000 de PostgREST: o se acota el número de hábitos por usuario (con una restricción en la BD) o se pagina, y se elige lo más simple que sea correcto.
   - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
 - [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
 - [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.

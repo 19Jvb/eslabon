@@ -1,74 +1,26 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { test as base, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { type SupabaseClient } from "@supabase/supabase-js";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   GENERIC,
+  alert,
   announced,
   button,
-  env,
+  cleanUp,
   expectFitsMobile,
   expectNoSeriousA11yViolations,
   failServerActions,
   field,
-  heading,
-  login,
+  item,
+  openApp,
+  prefix,
+  seed,
   slowSubmits,
   tabTo,
+  test,
+  tooLong,
 } from "./helpers";
 
-// T06 con el usuario de E2E (no la demo). Supuesto: ese usuario no tiene hábitos que no empiecen por «e2e-».
-// Los datos se siembran y se borran por la API, como el propio usuario (RLS), con la publishable key.
-
-type Session = { storageState: Awaited<ReturnType<BrowserContext["storageState"]>>; accessToken: string };
-
-/**
- * Un login por ejecución (Supabase limita los logins por IP): la sesión del navegador y el token de la API
- * se guardan en test-results/ (ignorado por git y vaciado al empezar cada ejecución) y se reutilizan
- * aunque el worker se reinicie tras un fallo.
- */
-const test = base.extend<{ api: SupabaseClient }, { session: Session }>({
-  session: [
-    async ({ browser }, provide, workerInfo) => {
-      const file = join(workerInfo.project.outputDir, ".auth", "e2e-user.json");
-      if (!existsSync(file)) {
-        const context = await browser.newContext({ baseURL: workerInfo.project.use.baseURL });
-        await login(await context.newPage(), env("E2E_USER_EMAIL"), env("E2E_USER_PASSWORD"));
-        const { data, error } = await apiClient().auth.signInWithPassword({
-          email: env("E2E_USER_EMAIL"),
-          password: env("E2E_USER_PASSWORD"),
-        });
-        if (error) throw new Error(`No se pudo iniciar sesión por la API: ${error.message}`);
-        mkdirSync(dirname(file), { recursive: true });
-        const session: Session = { storageState: await context.storageState(), accessToken: data.session.access_token };
-        writeFileSync(file, JSON.stringify(session));
-        await context.close();
-      }
-      await provide(JSON.parse(readFileSync(file, "utf8")));
-    },
-    { scope: "worker" },
-  ],
-  storageState: ({ session }, provide) => provide(session.storageState),
-  api: ({ session }, provide) => provide(apiClient(session.accessToken)),
-});
-
-function apiClient(accessToken?: string) {
-  return createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
-  });
-}
-
-/** ilike: también borra lo que un fallo hubiera creado en mayúsculas («E2E-…»). */
-const cleanUp = (api: SupabaseClient) => api.from("habits").delete().ilike("name", "e2e-%");
-
-/** Inserta en orden (uno tras otro, para que created_at los ordene). */
-async function seed(api: SupabaseClient, ...habits: { name: string; color?: string }[]) {
-  for (const habit of habits) {
-    const { error } = await api.from("habits").insert(habit);
-    if (error) throw new Error(`No se pudo sembrar «${habit.name}»: ${error.message}`);
-  }
-}
+// T06 con el usuario de E2E (no la demo): fixture de sesión, siembra y limpieza en helpers.ts.
 
 async function stored(api: SupabaseClient, name: string) {
   const { data, error } = await api.from("habits").select("name, color").ilike("name", name).order("created_at");
@@ -78,21 +30,10 @@ async function stored(api: SupabaseClient, name: string) {
 
 const COLORS = ["Rojo", "Naranja", "Ámbar", "Verde", "Azul", "Violeta"];
 const DUPLICATE = "Ya tienes un hábito con ese nombre.";
-const prefix = () => `e2e-${Date.now()}`;
-const tooLong = (p: string) => `${p}-`.padEnd(61, "x");
-
-const item = (page: Page, name: string) =>
-  page.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) });
-const alert = (page: Page, text: string) => page.getByRole("alert").filter({ hasText: text });
 const colorGroup = (page: Page) =>
   page.getByRole("radiogroup", { name: "Color" }).or(page.getByRole("group", { name: "Color" })).first();
 const radio = (page: Page, color: string) => colorGroup(page).getByRole("radio", { name: color, exact: true });
 const dialog = (page: Page) => page.getByRole("dialog");
-
-async function openApp(page: Page) {
-  await page.goto("/app");
-  await expect(heading(page)).toBeVisible();
-}
 
 async function create(page: Page, name: string) {
   await field(page, "Nombre").fill(name);

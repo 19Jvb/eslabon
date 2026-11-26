@@ -3,7 +3,9 @@ import {
   APP_URL,
   GENERIC,
   LOGIN_URL,
+  NOT_FORM_DATA,
   announced,
+  asciiPart,
   button,
   env,
   expectFitsMobile,
@@ -12,6 +14,7 @@ import {
   field,
   heading,
   login,
+  sendRewrittenAction,
   slowSubmits,
   tabTo,
 } from "./helpers";
@@ -197,4 +200,28 @@ test.describe("fallo del servidor (D-10)", () => {
     await expect(heading(page)).toBeVisible();
     await expect(button(page, "Cerrar sesión")).toBeEnabled();
   });
+});
+
+// Heredado de T06-r2 (criterio de T07): un cuerpo que no es FormData no llega a GoTrue, así que no gasta logins.
+test.describe("cuerpo manipulado", () => {
+  for (const [path, submit] of [
+    ["/login", "Entrar"],
+    ["/registro", "Crear cuenta"],
+  ] as const) {
+    test(`${path} · «${submit}» con un cuerpo que no es FormData (["x"], [], [null], [42]) → el genérico, no un 500`, async ({ page }) => {
+      await page.goto(path);
+      for (const junk of NOT_FORM_DATA) {
+        // React vacía el <form action> al terminar cada envío (el cuerpo falso no trae el email que lo rellenaría):
+        // sin rellenar de nuevo, el `required` del navegador bloquea el siguiente clic.
+        await field(page, "Email").fill("e2e-manipulado@example.com");
+        await field(page, "Contraseña").fill("una-contraseña-larga-123");
+        const sent = await sendRewrittenAction(page, () => button(page, submit).click(), () => junk, "text/plain;charset=UTF-8");
+        expect(sent.status, `${junk}: estado HTTP`).toBe(200);
+        expect(sent.body, `${junk}: respuesta`).toContain(asciiPart(GENERIC));
+        await expect(announced(page, GENERIC)).toBeVisible();
+        await expect(page).toHaveURL(new RegExp(`${path}/?$`));
+        await expect(button(page, submit)).toBeEnabled();
+      }
+    });
+  }
 });

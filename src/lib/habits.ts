@@ -33,6 +33,11 @@ const HabitId = z.uuid(GENERIC_ERROR);
 export const NewHabit = z.object({ name: HabitName, color: z.enum(COLOR_IDS, "Elige un color") }, GENERIC_ERROR);
 export const RenameHabit = z.object({ id: HabitId, name: HabitName }, GENERIC_ERROR);
 export const HabitRef = z.object({ id: HabitId }, GENERIC_ERROR);
+// done is the intent (mark or unmark), not a toggle: a stale screen still ends in the state the user saw.
+// The day's range depends on the user's today, so the action checks it with isEditableDay.
+export const CheckIn = z.object({ habitId: HabitId, day: z.string(GENERIC_ERROR), done: z.boolean(GENERIC_ERROR) }, GENERIC_ERROR);
+
+export const OUT_OF_RANGE = "Solo puedes marcar los últimos 7 días.";
 
 export const HABIT_GONE = "Ese hábito ya no existe.";
 

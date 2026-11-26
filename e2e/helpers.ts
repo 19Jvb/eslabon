@@ -1,5 +1,8 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { test as base, expect, type BrowserContext, type Locator, type Page, type Route } from "@playwright/test";
 
 export const APP_URL = /\/app\/?$/;
 export const LOGIN_URL = /\/login\/?$/;
@@ -99,4 +102,111 @@ export async function tabTo(page: Page, target: Locator, { checkRing = true } = 
     }
   }
   throw new Error("No se llega al elemento con Tab");
+}
+
+/**
+ * Reescribe el cuerpo de la primera Server Action que lance `trigger` (y solo esa) y devuelve el cuerpo original
+ * y la respuesta. Sirve para probar lo que el servidor hace con una petición manipulada.
+ */
+export async function sendRewrittenAction(
+  page: Page,
+  trigger: () => Promise<unknown>,
+  rewrite: (body: string) => string,
+  contentType?: string,
+) {
+  let original: string | undefined;
+  const handler = async (route: Route) => {
+    const request = route.request();
+    const isAction = request.method() === "POST" && (await request.headerValue("next-action")) !== null;
+    if (!isAction || original !== undefined) return route.fallback();
+    original = request.postData() ?? "";
+    const headers = contentType ? { ...request.headers(), "content-type": contentType } : undefined;
+    await route.continue({ postData: rewrite(original), headers });
+  };
+  await page.route("**/*", handler);
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined),
+    trigger(),
+  ]);
+  await page.unroute("**/*", handler);
+  return { original: original ?? "", status: response.status(), body: await response.text() };
+}
+
+/**
+ * Parte ASCII inicial de un mensaje. En las respuestas de peticiones interceptadas, Playwright entrega las tildes
+ * con doble codificación («é» → «Ã©»), aunque el navegador las pinta bien: el cuerpo se compara solo con esta parte
+ * y el texto completo se comprueba en la UI.
+ */
+export const asciiPart = (message: string) => message.split(/[^\x20-\x7e]/)[0];
+
+/** Cuerpos que no son FormData ni el objeto esperado (heredado de T06): el servidor responde el genérico, no un 500. */
+export const NOT_FORM_DATA = ['["x"]', "[]", "[null]", "[42]"];
+
+// ---------- Usuario de E2E: sesión compartida y datos por la API ----------
+// Supuesto: el usuario de E2E no tiene hábitos que no empiecen por «e2e-».
+// Los datos se siembran y se borran por la API, como el propio usuario (RLS), con la publishable key.
+
+type Session = { storageState: Awaited<ReturnType<BrowserContext["storageState"]>>; accessToken: string };
+
+/**
+ * Un login por ejecución (Supabase limita los logins por IP): la sesión del navegador y el token de la API
+ * se guardan en test-results/ (ignorado por git y vaciado al empezar cada ejecución) y se reutilizan
+ * aunque el worker se reinicie tras un fallo, y entre archivos.
+ */
+export const test = base.extend<{ api: SupabaseClient }, { session: Session }>({
+  session: [
+    async ({ browser }, provide, workerInfo) => {
+      const file = join(workerInfo.project.outputDir, ".auth", "e2e-user.json");
+      if (!existsSync(file)) {
+        const context = await browser.newContext({ baseURL: workerInfo.project.use.baseURL });
+        await login(await context.newPage(), env("E2E_USER_EMAIL"), env("E2E_USER_PASSWORD"));
+        const { data, error } = await apiClient().auth.signInWithPassword({
+          email: env("E2E_USER_EMAIL"),
+          password: env("E2E_USER_PASSWORD"),
+        });
+        if (error) throw new Error(`No se pudo iniciar sesión por la API: ${error.message}`);
+        mkdirSync(dirname(file), { recursive: true });
+        const session: Session = { storageState: await context.storageState(), accessToken: data.session.access_token };
+        writeFileSync(file, JSON.stringify(session));
+        await context.close();
+      }
+      await provide(JSON.parse(readFileSync(file, "utf8")));
+    },
+    { scope: "worker" },
+  ],
+  storageState: ({ session }, provide) => provide(session.storageState),
+  api: ({ session }, provide) => provide(apiClient(session.accessToken)),
+});
+
+function apiClient(accessToken?: string) {
+  return createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
+  });
+}
+
+/** ilike: también borra lo que un fallo hubiera creado en mayúsculas («E2E-…»). Los check-ins caen en cascada. */
+export const cleanUp = (api: SupabaseClient) => api.from("habits").delete().ilike("name", "e2e-%");
+
+/** Inserta en orden (uno tras otro, para que created_at los ordene) y devuelve los id. */
+export async function seed(api: SupabaseClient, ...habits: { name: string; color?: string }[]) {
+  const ids: string[] = [];
+  for (const habit of habits) {
+    const { data, error } = await api.from("habits").insert(habit).select("id").single();
+    if (error) throw new Error(`No se pudo sembrar «${habit.name}»: ${error.message}`);
+    ids.push(data.id);
+  }
+  return ids;
+}
+
+export const prefix = () => `e2e-${Date.now()}`;
+export const tooLong = (p: string) => `${p}-`.padEnd(61, "x");
+
+export const item = (page: Page, name: string) =>
+  page.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) });
+export const alert = (page: Page, text: string) => page.getByRole("alert").filter({ hasText: text });
+
+export async function openApp(page: Page) {
+  await page.goto("/app");
+  await expect(heading(page)).toBeVisible();
 }

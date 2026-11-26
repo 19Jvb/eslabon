@@ -1,16 +1,17 @@
 "use client";
 
-import { startTransition, useActionState, useId, useRef, useState, useTransition } from "react";
+import { startTransition, useActionState, useId, useOptimistic, useRef, useState, useTransition } from "react";
 import { Spinner } from "@/app/spinner";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, swatchClass } from "@/lib/habits";
 import { withFallback } from "@/lib/with-fallback";
-import { createHabit, deleteHabit, renameHabit } from "./actions";
+import { createHabit, deleteHabit, renameHabit, setCheckIn } from "./actions";
 
 const failed: ActionResult = { ok: false, error: GENERIC_ERROR };
 const createAction = withFallback(createHabit, failed);
 const renameAction = withFallback(renameHabit, failed);
 const deleteAction = withFallback(deleteHabit, failed);
+const checkInAction = withFallback(setCheckIn, failed);
 
 // The revalidated list drops the row that holds focus: send it to the page h1 instead.
 function focusHeading() {
@@ -25,6 +26,7 @@ const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-
 const dangerButton = `${buttonClass} bg-red-700 text-white hover:bg-red-800`;
 
 type Habit = { id: string; name: string; color: string };
+type WeekDay = { day: string; label: string; initial: string; date: number };
 // What was typed travels in the state: React resets the form after each action, back to these defaults.
 type FormState = { error: string | null; name: string };
 type NewHabitState = FormState & { color: string };
@@ -151,7 +153,54 @@ function RenameForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
   );
 }
 
-export function HabitItem({ habit }: { habit: Habit }) {
+function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
+  const [shown, setShown] = useOptimistic(marked, (current, { day, done }: { day: string; done: boolean }) =>
+    done ? [...current, day] : current.filter((d) => d !== day),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const id = useId();
+
+  // Sends the intent read from what is on screen, so a fast double click marks and then unmarks.
+  function toggle(day: string) {
+    const done = !shown.includes(day);
+    setError(null);
+    startTransition(async () => {
+      setShown({ day, done });
+      const result = await checkInAction({ habitId: habit.id, day, done });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-between sm:justify-start sm:gap-2">
+        {days.map(({ day, label, initial, date }) => (
+          <button
+            key={day}
+            type="button"
+            data-day={day}
+            aria-pressed={shown.includes(day)}
+            onClick={() => toggle(day)}
+            className={`flex size-11 flex-col items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100 aria-pressed:border-emerald-700 aria-pressed:bg-emerald-700 aria-pressed:text-white aria-pressed:hover:bg-emerald-800 ${focusRing}`}
+          >
+            {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
+                does not contain the visible «J 26». */}
+            <span className="sr-only">{`${label}: ${habit.name}`}</span>
+            <span aria-hidden="true" className="text-xs leading-none">
+              {initial}
+            </span>
+            <span aria-hidden="true" className="text-sm leading-tight font-semibold">
+              {date}
+            </span>
+          </button>
+        ))}
+      </div>
+      <ErrorMessage id={`${id}-error`} error={error} />
+    </div>
+  );
+}
+
+export function HabitItem({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
   const [editing, setEditing] = useState(false);
   const [deleting, startDeleting] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -187,40 +236,43 @@ export function HabitItem({ habit }: { habit: Habit }) {
   }
 
   return (
-    <li className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-4">
-      <span aria-hidden="true" className={`size-4 shrink-0 rounded-full ${swatchClass(habit.color)}`} />
-      {editing ? (
-        <RenameForm habit={habit} onDone={stopEditing} />
-      ) : (
-        <>
-          <span className="min-w-0 flex-1 font-medium break-words text-neutral-900">{habit.name}</span>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              ref={(button) => {
-                if (button && focusRename.current) {
-                  focusRename.current = false;
-                  button.focus();
-                }
-              }}
-              aria-label={`Renombrar ${habit.name}`}
-              onClick={() => setEditing(true)}
-              className={secondaryButton}
-            >
-              Renombrar
-            </button>
-            <button
-              type="button"
-              ref={deleteButtonRef}
-              aria-label={`Borrar ${habit.name}`}
-              onClick={openDialog}
-              className={secondaryButton}
-            >
-              Borrar
-            </button>
-          </div>
-        </>
-      )}
+    <li className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 sm:p-4">
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className={`size-4 shrink-0 rounded-full ${swatchClass(habit.color)}`} />
+        {editing ? (
+          <RenameForm habit={habit} onDone={stopEditing} />
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 font-medium break-words text-neutral-900">{habit.name}</span>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                ref={(button) => {
+                  if (button && focusRename.current) {
+                    focusRename.current = false;
+                    button.focus();
+                  }
+                }}
+                aria-label={`Renombrar ${habit.name}`}
+                onClick={() => setEditing(true)}
+                className={secondaryButton}
+              >
+                Renombrar
+              </button>
+              <button
+                type="button"
+                ref={deleteButtonRef}
+                aria-label={`Borrar ${habit.name}`}
+                onClick={openDialog}
+                className={secondaryButton}
+              >
+                Borrar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <DayButtons habit={habit} days={days} marked={marked} />
       <dialog
         ref={dialogRef}
         aria-labelledby={`${id}-question`}

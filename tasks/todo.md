@@ -76,6 +76,17 @@
   - Heredado de T07-r1: marcar un día de un hábito ya borrado (en otra pestaña) responde «Ese hábito ya no existe.» y revalida /app, igual que renombrar y borrar. La consulta de check_ins de las estadísticas no puede cortar filas sin avisar por el `max_rows` de 1000 de PostgREST: o se acota el número de hábitos por usuario (con una restricción en la BD) o se pagina, y se elige lo más simple que sea correcto.
   - Heredado de T03-r1: `completionRate` con `windowDays <= 0` no puede devolver `NaN` (que devuelva 0 o lance un error claro, con su test), y `heatmapWeeks` tiene un test del cambio de horario de marzo.
 - [ ] **T09: «Cargar datos de ejemplo», idempotente** (S): SPEC F6.
+  - En el estado vacío de /app (0 hábitos) aparece el botón «Cargar datos de ejemplo». Con 1 hábito o más, no aparece.
+  - Al pulsarlo se crean exactamente 3 hábitos: «Leer 20 minutos» (azul), «Caminar 30 minutos» (verde) y «Beber 2 litros de agua» (ámbar). Tienen unos 60 días de historial **deterministas** (un patrón fijo según el desplazamiento del día, sin azar, para poder testearlo) y realistas: rachas variadas, algún hueco y una mejor racha mayor que la actual en al menos uno. **Hoy queda sin marcar** en los 3, para que quien evalúe lo marque y vea subir la racha.
+  - Idempotente: con hábitos ya existentes no hace nada. El doble clic o dos llamadas a la vez dejan exactamente 3 hábitos (sin duplicados ni error crudo).
+  - Migración NUEVA con una función `public.load_sample_data(p_today date)`. Requisitos:
+    - `security definer`, `set search_path = ''` y todo cualificado con su esquema;
+    - `revoke all … from public, anon`; `grant execute … to authenticated`;
+    - usa `auth.uid()` (error si es null) y nunca un user_id que llegue de fuera;
+    - valida `p_today between current_date - 1 and current_date + 1` (el «hoy» del usuario según su zona) y genera los días relativos a `p_today`, todos `< p_today`.
+    - Se llama con `supabase.rpc` desde una Server Action (zod + getUser + el genérico).
+  - Después de aplicarla, `db advisors` no da problemas nuevos.
+  - Paso del Orquestador tras la aprobación y con el OK del humano: aplicar la migración (`db push`) y cargar los datos de ejemplo en la cuenta demo, para que quien evalúe vea datos nada más entrar.
   - Heredado de T08-r1: (a) en `setCheckIn`, ante un 42501 se comprueba si el hábito existe (`select id … maybeSingle`): si no existe, HABIT_GONE; si existe, el genérico. Así nunca se dice «ya no existe» por error. (b) `fetchAll` pagina por clave (`habit_id`, `day`) en vez de por posición, para no saltarse filas si se borra una entre páginas, y su test simula el 416 real (PGRST103) en vez de un 200 vacío.
   - OJO (Orquestador, al planificar T08): la RLS de check_ins solo permite insertar días entre `current_date - 8` y `current_date + 1`. Un historial de unos 60 días NO se puede insertar desde el cliente. Hace falta una migración nueva con una función `security definer` (`set search_path = ''`, `revoke execute ... from public, anon`, grant solo a authenticated) que inserte los datos de ejemplo para `auth.uid()`, solo si el usuario no tiene hábitos (idempotente). Se llama por RPC desde una Server Action. La revisión de seguridad de esa función es obligatoria (D-06). La migración se aplica con el OK del humano.
 - [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.

@@ -158,3 +158,10 @@
 - [ ] **T15a (Orquestador, justo antes de entregar): recargar los datos de ejemplo de la cuenta demo** (como la demo, borrar sus hábitos y llamar a `load_sample_data` con el hoy de Madrid), para que las rachas estén vivas el día que se evalúa. Borrar también las cuentas `e2e+…@example.com` acumuladas.
 - [ ] **T15: README** Documentar en «Decisiones»: la ventana de edición de 7 días es una decisión de producto confirmada por el humano el 2026-11-27 (racha honesta, sin cambiar la RLS y sin 84 botones por hábito). Los dos avisos de `db advisors`: (1) `authenticated_security_definer_function_executable` sobre load_sample_data, que es intencionado y está blindado (T09-r1a); (2) `auth_leaked_password_protection`, que hay que comprobar si el plan Free lo permite y activarlo, y si no, documentarlo. (URL, cuenta demo, diagrama del equipo, cómo ejecutarlo y decisiones) **y escaneo de secretos en todo el historial** (`git log -p` con los patrones de D-04).
 - [ ] **T16: Respuestas a las 4 preguntas** (borrador del Orquestador; el humano lo revisa y le pone su voz).
+
+## Fase 6 (opcional, DESPUÉS de publicar y verificar la URL): bot de Telegram
+> Aprobado por el humano el 2026-11-27 como extra posterior a la entrega obligatoria. Antes de empezar, se especifica (criterios + diseño de seguridad) y se le enseña al humano.
+- [ ] **T17: Vincular Telegram con la cuenta:** código de un solo uso generado en /app, tabla de vínculos con RLS y funciones SQL controladas (sin service_role). Revisión del SQL en dos fases, como en T09.
+- [ ] **T18: Webhook del bot:** una route de Next.js en Vercel verificada con el secret token de Telegram e idempotente; `/vincular <código>` y `/hoy` con botones para marcar hoy. El token del bot solo vive en Vercel (paso manual del humano con @BotFather).
+- [ ] **T19: README y pruebas del bot** (tests de la route con mocks de la API de Telegram).
+

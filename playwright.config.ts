@@ -19,12 +19,14 @@ export default defineConfig({
   reporter: "list",
   use: { baseURL, actionTimeout: 15_000, navigationTimeout: 30_000, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // En local, un build de producción (como Vercel): `next dev` no se comporta igual (p. ej., sin Cache-Control
+  // private, que cache.spec exige). Si ya hay algo en el puerto 3000, se reutiliza tal cual.
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: "npm run dev",
+        command: "npm run build && npm run start",
         url: "http://localhost:3000",
         reuseExistingServer: true,
-        timeout: 120_000,
+        timeout: 300_000,
       },
 });

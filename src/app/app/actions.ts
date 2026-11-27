@@ -16,11 +16,13 @@ import {
   RenameHabit,
 } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
-import { userToday } from "@/lib/user-today";
+import { userTimeZone, userToday } from "@/lib/user-today";
 
 type SignOutState = { error: string } | null;
+type LinkCodeResult = { ok: true; code: string } | { ok: false; error: string };
+type LinkStatusResult = { ok: true; linked: boolean } | { ok: false; error: string };
 
-const SESSION_EXPIRED: ActionResult = { ok: false, error: "Tu sesión ha caducado. Vuelve a entrar." };
+const SESSION_EXPIRED: { ok: false; error: string } = { ok: false, error: "Tu sesión ha caducado. Vuelve a entrar." };
 
 // scope "local" closes only this browser's session: the demo account is shared, and the default
 // ("global") would sign every visitor out.
@@ -135,6 +137,60 @@ export async function loadSampleData(input?: unknown): Promise<ActionResult> {
   if (!user) return SESSION_EXPIRED;
 
   const { error } = await supabase.rpc("load_sample_data", { p_today: await userToday() });
+  if (error) return { ok: false, error: GENERIC_ERROR };
+
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+// A one-time code for the bot (valid 10 minutes; the previous one stops working). The zone that travels with it
+// comes from the tz cookie on the server, never from the client.
+export async function createTelegramLinkCode(input?: unknown): Promise<LinkCodeResult> {
+  const parsed = NoInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return SESSION_EXPIRED;
+
+  const { data, error } = await supabase.rpc("create_telegram_link_code", { p_tz: await userTimeZone() });
+  if (error || !data) return { ok: false, error: GENERIC_ERROR };
+
+  return { ok: true, code: data };
+}
+
+// Read only: whether the bot has linked the user yet. Once it has, the revalidated page shows the link.
+export async function checkTelegramLink(input?: unknown): Promise<LinkStatusResult> {
+  const parsed = NoInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return SESSION_EXPIRED;
+
+  const { data, error } = await supabase.from("telegram_links").select("user_id").maybeSingle();
+  if (error) return { ok: false, error: GENERIC_ERROR };
+
+  if (data) revalidatePath("/app");
+  return { ok: true, linked: data !== null };
+}
+
+// Without .select(): the select grant covers only some columns, and returning every one of them fails (42501).
+export async function unlinkTelegram(input?: unknown): Promise<ActionResult> {
+  const parsed = NoInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return SESSION_EXPIRED;
+
+  const { error } = await supabase.from("telegram_links").delete().eq("user_id", user.id);
   if (error) return { ok: false, error: GENERIC_ERROR };
 
   revalidatePath("/app");

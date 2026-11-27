@@ -502,8 +502,12 @@ export const motionOutsideWhitelist = (page: Page) =>
     { TRANSFORM, COLOR_PROPS },
   );
 
-/** Escala del elemento mientras se mantiene pulsado (se suelta fuera, así no hay clic). */
+/**
+ * Escala del elemento mientras se mantiene pulsado (se suelta fuera, así no hay clic). Primero lo trae al viewport:
+ * boundingBox() da coordenadas de página y el ratón no pulsa fuera de lo visible (T18-r1: «Crear» quedó en y=884).
+ */
 export async function pressedScale(page: Page, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
   const box = (await target.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();

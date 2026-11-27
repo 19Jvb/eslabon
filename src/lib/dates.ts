@@ -10,11 +10,22 @@ const WEEKDAY_INITIAL = new Intl.DateTimeFormat("es-ES", { weekday: "narrow", ti
 
 // The user's local date in an IANA zone. The server runs in UTC, so this is the only source of "today".
 export function todayIn(timeZone: string, now: Date = new Date()): Day {
+  return formatDay(timeZoneOrDefault(timeZone), now);
+}
+
+// The zone itself if Intl knows it; Europe/Madrid when it is missing or not a valid zone, never the server's UTC.
+export function timeZoneOrDefault(timeZone: string): string {
   try {
-    return formatDay(timeZone, now);
+    new Intl.DateTimeFormat("en", { timeZone });
+    return timeZone;
   } catch {
-    return formatDay(DEFAULT_TIME_ZONE, now);
+    return DEFAULT_TIME_ZONE;
   }
+}
+
+// «27 de noviembre de 2026»: the calendar date of an instant (a timestamptz) in the user's zone.
+export function longDateIn(at: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("es-ES", { dateStyle: "long", timeZone: timeZoneOrDefault(timeZone) }).format(new Date(at));
 }
 
 // Pure UTC arithmetic: daylight saving changes cannot shift the result.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dayNames, isEditableDay, isValidDay, lastWeek, todayIn } from "@/lib/dates";
+import { addDays, dayNames, isEditableDay, isValidDay, lastWeek, longDateIn, timeZoneOrDefault, todayIn } from "@/lib/dates";
 
 describe("todayIn", () => {
   it("devuelve el día local en formato YYYY-MM-DD", () => {
@@ -172,5 +172,48 @@ describe("dayNames", () => {
     expect(dayNames("2026-03-29", "2026-03-31").label).toBe("Domingo 29");
     expect(dayNames("2026-10-25", "2026-10-27").label).toBe("Domingo 25");
     expect(dayNames("2028-02-29", "2028-03-02").label).toBe("Martes 29");
+  });
+});
+
+describe("timeZoneOrDefault", () => {
+  it("devuelve la zona si es válida", () => {
+    expect(timeZoneOrDefault("Pacific/Honolulu")).toBe("Pacific/Honolulu");
+    expect(timeZoneOrDefault("UTC")).toBe("UTC");
+  });
+
+  it("si falta o no es válida, Europe/Madrid", () => {
+    expect(timeZoneOrDefault("")).toBe("Europe/Madrid");
+    expect(timeZoneOrDefault("Marte/Base")).toBe("Europe/Madrid");
+  });
+});
+
+describe("longDateIn", () => {
+  it("la fecha larga en español del instante, en la zona del usuario", () => {
+    expect(longDateIn("2026-11-27T10:00:00+00:00", "Europe/Madrid")).toBe("27 de noviembre de 2026");
+  });
+
+  it("el mismo instante es otro día según la zona", () => {
+    const at = "2026-11-27T23:30:00+00:00";
+    expect(longDateIn(at, "Europe/Madrid")).toBe("28 de noviembre de 2026");
+    expect(longDateIn(at, "UTC")).toBe("27 de noviembre de 2026");
+    expect(longDateIn("2026-11-27T05:00:00+00:00", "Pacific/Honolulu")).toBe("26 de noviembre de 2026");
+  });
+
+  it("en verano Madrid va a +2: a las 22:30 UTC ya es el día siguiente", () => {
+    expect(longDateIn("2026-07-15T22:30:00Z", "Europe/Madrid")).toBe("16 de julio de 2026");
+  });
+
+  it("acierta el día de los cambios de horario de Madrid", () => {
+    expect(longDateIn("2026-03-29T22:30:00Z", "Europe/Madrid")).toBe("30 de marzo de 2026");
+    expect(longDateIn("2026-10-25T22:30:00Z", "Europe/Madrid")).toBe("25 de octubre de 2026");
+  });
+
+  it("el 29 de febrero de un año bisiesto", () => {
+    expect(longDateIn("2028-02-28T23:30:00Z", "Europe/Madrid")).toBe("29 de febrero de 2028");
+    expect(longDateIn("2028-02-29T23:30:00Z", "Europe/Madrid")).toBe("1 de marzo de 2028");
+  });
+
+  it("si la zona no es válida usa Europe/Madrid", () => {
+    expect(longDateIn("2026-12-31T23:30:00+00:00", "Marte/Base")).toBe("1 de enero de 2027");
   });
 });

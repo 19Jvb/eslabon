@@ -35,8 +35,8 @@ function focusHeading() {
 }
 
 const buttonClass = `${buttonBase} text-sm`;
-const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
-const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
+export const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
+export const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
 const dangerButton = `${buttonClass} bg-red-700 text-white hover:bg-red-800`;
 const iconButton = `inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100 ${pressable} ${focusRing}`;
 
@@ -68,7 +68,7 @@ const TrashIcon = () => (
   </Icon>
 );
 
-function ErrorMessage({ id, error }: { id: string; error: string | null }) {
+export function ErrorMessage({ id, error }: { id: string; error: string | null }) {
   if (!error) return null;
   return (
     <p id={id} role="alert" className="text-sm font-medium text-red-700">

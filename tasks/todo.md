@@ -175,7 +175,7 @@
 - **Token del bot:** solo en Vercel (`TELEGRAM_BOT_TOKEN`, servidor). El humano lo escribe en `.env.local` y el Orquestador lo sube sin imprimirlo. Nunca pasa por el chat ni por el repo.
 
 - [x] **T17: Migración de Telegram (revisión del SQL en dos fases, como en T09):** las tablas `telegram_links` (user_id pk, chat_id único, tz, linked_at; RLS: el dueño puede select y delete) y `private.telegram_link_codes`; el secreto en `private`; las RPC `create_telegram_link_code(p_tz)` (authenticated) y `telegram_link`, `telegram_unlink`, `telegram_today` y `telegram_set_checkin` (anon, con `p_secret`). Insert idempotente. Ventana de días como la app.
-- [ ] **T18: Vincular desde /app (UI, la aceptación va primero):** una sección «Telegram» con el estado (vinculado o no), «Vincular con Telegram» (genera el código y muestra el enlace profundo, el código y la caducidad) y «Desvincular». Server Actions con zod, getUser y el genérico.
+- [x] **T18: Vincular desde /app (UI, la aceptación va primero):** una sección «Telegram» con el estado (vinculado o no), «Vincular con Telegram» (genera el código y muestra el enlace profundo, el código y la caducidad) y «Desvincular». Server Actions con zod, getUser y el genérico.
   - Contrato de la interfaz (debajo de la lista de hábitos, antes de «Nuevo hábito»): sección con h2 «Telegram».
     - **Sin vincular:** el texto «Marca tus hábitos de hoy desde Telegram.» y el botón «Vincular con Telegram». Al pulsarlo (Server Action: getUser + RPC `create_telegram_link_code` con el tz de la cookie) aparecen:
       - un enlace «Abrir Telegram» con `href="https://t.me/<TELEGRAM_BOT_USERNAME>?start=<CÓDIGO>"`, `target="_blank"` y `rel="noopener noreferrer"`;

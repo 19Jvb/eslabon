@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { focusRing } from "@/app/ui";
-import { dayNames, lastWeek } from "@/lib/dates";
+import { dayNames, lastWeek, longDateIn } from "@/lib/dates";
 import { fetchAll, PAGE_SIZE } from "@/lib/fetch-all";
 import { HABITS_HEADING_ID } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
-import { userToday } from "@/lib/user-today";
+import { botUsername } from "@/lib/telegram";
+import { userTimeZone, userToday } from "@/lib/user-today";
 import { HabitItem, HabitListNotice, LoadSampleForm, NewHabitForm } from "./habit-forms";
+import { TelegramLink } from "./telegram-forms";
 
 export const metadata: Metadata = { title: "Tus hábitos" };
 // The list is rendered before the HTML is sent, not streamed behind <Suspense>: without JavaScript a
@@ -22,6 +24,7 @@ export default function AppPage() {
       <HabitListNotice>
         <HabitList />
       </HabitListNotice>
+      <TelegramSection />
       <NewHabitForm />
     </main>
   );
@@ -76,4 +79,36 @@ async function HabitList() {
       ))}
     </ul>
   );
+}
+
+const TELEGRAM_HEADING_ID = "telegram-heading";
+
+async function TelegramSection() {
+  await connection();
+  const bot = botUsername(process.env.TELEGRAM_BOT_USERNAME);
+
+  return (
+    <section aria-labelledby={TELEGRAM_HEADING_ID} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6">
+      <h2 id={TELEGRAM_HEADING_ID} className="text-lg font-semibold text-neutral-900">
+        Telegram
+      </h2>
+      {bot ? <TelegramStatus bot={bot} /> : <p className="mt-2 text-neutral-700">Telegram no está disponible ahora mismo.</p>}
+    </section>
+  );
+}
+
+// Whether the user has linked the bot: only user_id and linked_at, the columns the API may read (chat_id is not).
+async function TelegramStatus({ bot }: { bot: string }) {
+  const supabase = await createClient();
+  const { data: link, error } = await supabase.from("telegram_links").select("user_id, linked_at").maybeSingle();
+  if (error) {
+    return (
+      <p role="alert" className="mt-2 font-medium text-red-700">
+        No se pudo comprobar la vinculación con Telegram. Recarga la página para intentarlo de nuevo.
+      </p>
+    );
+  }
+
+  const linkedSince = link ? longDateIn(link.linked_at, await userTimeZone()) : null;
+  return <TelegramLink bot={bot} linkedSince={linkedSince} />;
 }

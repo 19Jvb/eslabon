@@ -61,16 +61,49 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"telegram_links": {
+                  Row: {
+                    "chat_id": number,"linked_at": string,"tz": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "chat_id": number,"linked_at"?: string,"tz"?: string,"user_id": string
+                  }
+                  Update: {
+                    "chat_id"?: number,"linked_at"?: string,"tz"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 }
           }
           Views: {
             [_ in never]: never
           }
           Functions: {
-            "load_sample_data": {
-                  Args: { "p_today": string }
-                  Returns: undefined
-                }
+            "create_telegram_link_code":
+{ Args: { "p_tz": string }; Returns: string
+                           },
+"load_sample_data":
+{ Args: { "p_today": string }; Returns: undefined
+                           },
+"telegram_link":
+{ Args: { "p_chat_id": number,"p_code": string,"p_secret": string }; Returns: string
+                           },
+"telegram_set_checkin":
+{ Args: { "p_chat_id": number,"p_done": boolean,"p_habit_id": string,"p_secret": string }; Returns: string
+                           },
+"telegram_status":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: string
+                           },
+"telegram_today":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: {
+              "color": string,"done": boolean,"habit_id": string,"name": string,"today": string
+            }[]
+                           },
+"telegram_unlink":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: string
+                           }
           }
           Enums: {
             [_ in never]: never

@@ -31,6 +31,7 @@ import {
   openApp,
   paint,
   prefix,
+  pressedScale,
   readStats,
   recordAnimations,
   seed,
@@ -352,24 +353,6 @@ test.describe("T11b · la cadena entre días contiguos", () => {
 });
 
 // ---------------------------------------------------------------- Movimiento y anuncio
-
-/** Escala del elemento mientras se mantiene pulsado (se suelta fuera, así no hay clic). */
-async function pressedScale(page: Page, target: Locator) {
-  const box = (await target.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(300);
-  const scale = await target.evaluate((el) => {
-    const s = getComputedStyle(el);
-    let v = 1;
-    if (s.scale && s.scale !== "none") v *= parseFloat(s.scale);
-    if (s.transform && s.transform !== "none") v *= new DOMMatrix(s.transform).a;
-    return v;
-  });
-  await page.mouse.move(1, 1);
-  await page.mouse.up();
-  return scale;
-}
 
 const isTransform = (p: string) => TRANSFORM.includes(p);
 const streakValue = async (page: Page, name: string) => (await readStats(page, name))[0]?.[0]?.[1];

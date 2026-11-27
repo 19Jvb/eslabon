@@ -125,7 +125,7 @@
     - Con `prefers-reduced-motion: reduce`, nada se mueve.
   - **Anuncio [P2, a11y]:** una región `aria-live="polite"` anuncia «Racha actual de <hábito>: N días» cuando la racha cambia por una acción del usuario (no al cargar la página).
   - **Selector de color:** a 1280 los 6 colores caben en una fila (sin «Violeta» huérfana); a 375, en una rejilla ordenada.
-- [ ] **T11c: Landing y detalles menores** (S). Mismo origen.
+- [x] **T11c: Landing y detalles menores** (S). Mismo origen.
   - El h1 lleva el glifo `aria-hidden` (su nombre accesible sigue siendo exactamente «Eslabón»).
   - Tercer punto, el mismo título, con el texto en lenguaje de usuario: «Nadie más ve tus hábitos: cada cuenta solo puede leer y editar los suyos.».
   - CTA final tras la lista: un enlace «Empieza tu cadena» → /registro (con un nombre distinto de los que ya existen, para no duplicar los roles que usan los tests).

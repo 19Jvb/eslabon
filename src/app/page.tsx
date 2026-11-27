@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BrandGlyph } from "@/app/brand-glyph";
 import { DemoButton } from "@/app/demo-form";
 import { ProductPreview } from "@/app/product-preview";
 import { buttonBase } from "@/app/ui";
@@ -20,7 +21,7 @@ const points = [
   },
   {
     title: "Tus datos son solo tuyos",
-    text: "Cada cuenta ve solo sus hábitos: lo garantiza la propia base de datos, no solo la interfaz.",
+    text: "Nadie más ve tus hábitos: cada cuenta solo puede leer y editar los suyos.",
   },
 ];
 
@@ -28,7 +29,10 @@ export default function Home() {
   return (
     <main className="flex flex-1 flex-col bg-neutral-50">
       <section className="mx-auto w-full max-w-2xl px-4 pt-16 pb-12 text-center sm:pt-24">
-        <h1 className="text-5xl font-bold tracking-tight text-emerald-800 sm:text-6xl">Eslabón</h1>
+        <h1 className="flex items-center justify-center gap-3 text-5xl font-bold tracking-tight text-emerald-800 sm:text-6xl">
+          <BrandGlyph />
+          Eslabón
+        </h1>
         <p className="mt-3 text-xl font-semibold text-neutral-900 sm:text-2xl">No rompas la cadena.</p>
         <p className="mx-auto mt-4 max-w-xl text-lg text-pretty text-neutral-700">
           Crea tus hábitos diarios y márcalos cada día que los cumplas. Cada día cumplido es un eslabón más de tu
@@ -52,7 +56,7 @@ export default function Home() {
 
       <ProductPreview />
 
-      <ul className="mx-auto grid w-full max-w-4xl gap-6 px-4 pb-16 sm:grid-cols-3 sm:gap-8">
+      <ul className="mx-auto grid w-full max-w-4xl gap-6 px-4 pb-14 sm:grid-cols-3 sm:gap-8">
         {points.map((point) => (
           <li key={point.title} className="border-t border-neutral-300 pt-4">
             <h2 className="text-lg font-semibold text-neutral-900">{point.title}</h2>
@@ -60,6 +64,13 @@ export default function Home() {
           </li>
         ))}
       </ul>
+
+      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4 px-4 pb-20 text-center">
+        <p className="text-lg text-pretty text-neutral-700">El primer eslabón puede ser el de hoy.</p>
+        <Link href="/registro" className={`${buttonBase} bg-emerald-700 text-white hover:bg-emerald-800`}>
+          Empieza tu cadena
+        </Link>
+      </div>
     </main>
   );
 }

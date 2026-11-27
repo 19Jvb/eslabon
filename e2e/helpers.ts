@@ -502,7 +502,25 @@ export const motionOutsideWhitelist = (page: Page) =>
     { TRANSFORM, COLOR_PROPS },
   );
 
-export type Recorded = { where: string; dd: number; inDialog: boolean; props: string[]; ms: number };
+/** Escala del elemento mientras se mantiene pulsado (se suelta fuera, así no hay clic). */
+export async function pressedScale(page: Page, target: Locator) {
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(300);
+  const scale = await target.evaluate((el) => {
+    const s = getComputedStyle(el);
+    let v = 1;
+    if (s.scale && s.scale !== "none") v *= parseFloat(s.scale);
+    if (s.transform && s.transform !== "none") v *= new DOMMatrix(s.transform).a;
+    return v;
+  });
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+  return scale;
+}
+
+export type Recorded ={ where: string; dd: number; inDialog: boolean; props: string[]; ms: number };
 
 /**
  * Graba desde la carga, frame a frame, cada animación o transición que arranca (CSS o Web Animations): dónde (etiqueta
@@ -565,4 +583,105 @@ export const visibleTexts = (target: Locator) =>
       found.push({ text, top: r.top, bottom: r.bottom, left: r.left, right: r.right });
     }
     return found;
+  });
+
+// ---------- Vista previa de la landing (T11, rehecha en T11c) ----------
+
+/**
+ * Lee la vista previa estática de «/»: el elemento aria-hidden o role=img más externo que contiene «Leer 20 minutos».
+ * - `row`: la fila de días (7 textos L…D, «Ayer» u «Hoy» en la misma línea), de izquierda a derecha, con la caja pintada
+ *   de cada día (el antepasado más externo con ese mismo texto que tiene fondo o borde) y si está relleno (marcado).
+ * - `links`: conectores, elementos reales (no pseudoelementos) sin texto, que se ven, cuyo centro cae entre los centros
+ *   de dos días contiguos y dentro de su alto, no más anchos que la distancia entre esos centros y con fondo, borde o SVG.
+ * - `labels`: textos L, X y V fuera de la fila de días, con cuántas celdas vacías pequeñas (6–20 px) tienen a su derecha.
+ */
+export const readPreview = (page: Page) =>
+  page.evaluate(() => {
+    const root = [...document.querySelectorAll('[aria-hidden="true"], [role="img"]')].find((el) =>
+      (el.textContent ?? "").includes("Leer 20 minutos"),
+    );
+    if (!root) return null;
+    const ctx = document.createElement("canvas").getContext("2d")!;
+    const onWhite = (color: string) => {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, 1, 1);
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    };
+    const own = (el: Element) =>
+      [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim();
+    const text = (el: Element) => (el.textContent ?? "").trim();
+    const seen = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0 || getComputedStyle(el).visibility !== "visible") return false;
+      let opacity = 1;
+      for (let n: Element | null = el; n; n = n.parentElement) opacity *= parseFloat(getComputedStyle(n).opacity);
+      return opacity > 0.01;
+    };
+    const painted = (el: Element) => {
+      const s = getComputedStyle(el);
+      const bg = onWhite(s.backgroundColor).some((c) => c < 250);
+      const border = ["top", "right", "bottom", "left"].some(
+        (side) => parseFloat(s.getPropertyValue(`border-${side}-width`)) > 0 && s.getPropertyValue(`border-${side}-style`) !== "none",
+      );
+      return bg || border || el instanceof SVGElement;
+    };
+    const all = [...root.querySelectorAll("*")].filter(seen);
+
+    const DAY = /^(L|M|X|J|V|S|D|Ayer|Hoy)$/;
+    const days = all
+      .filter((el) => DAY.test(own(el)))
+      .map((el) => {
+        let cell = el;
+        for (let n = el.parentElement; n && root.contains(n) && n !== root && text(n) === own(el); n = n.parentElement) {
+          if (painted(n)) cell = n;
+        }
+        const r = cell.getBoundingClientRect();
+        const fill = onWhite(getComputedStyle(cell).backgroundColor);
+        return { el: cell, text: own(el), left: r.left, right: r.right, top: r.top, bottom: r.bottom, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, filled: fill.some((c) => c < 235) };
+      });
+    const rows: (typeof days)[] = [];
+    for (const d of days) {
+      const row = rows.find((r) => Math.abs(r[0].cy - d.cy) <= 3);
+      if (row) row.push(d);
+      else rows.push([d]);
+    }
+    const row = (rows.find((r) => r.length === 7 && r.some((d) => d.text === "Hoy")) ?? []).sort((a, b) => a.cx - b.cx);
+
+    const links = all
+      .filter((el) => text(el) === "" && painted(el) && !row.some((d) => el.contains(d.el) || el === d.el))
+      .flatMap((el) => {
+        const r = el.getBoundingClientRect();
+        const cx = (r.left + r.right) / 2;
+        const cy = (r.top + r.bottom) / 2;
+        const i = row.findIndex((d, k) => k < row.length - 1 && d.cx < cx && cx < row[k + 1].cx);
+        if (i < 0 || cy < row[i].top || cy > row[i].bottom || r.width > row[i + 1].cx - row[i].cx + 1) return [];
+        return [i];
+      });
+
+    const rowTop = Math.min(...row.map((d) => d.top));
+    const rowBottom = Math.max(...row.map((d) => d.bottom));
+    const small = all.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return text(el) === "" && r.width >= 6 && r.width <= 20 && r.height >= 6 && r.height <= 20;
+    });
+    const labels = all
+      .filter((el) => ["L", "X", "V"].includes(own(el)))
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        const cy = (r.top + r.bottom) / 2;
+        const cells = small.filter((c) => {
+          const b = c.getBoundingClientRect();
+          return b.left >= r.right - 0.5 && Math.abs((b.top + b.bottom) / 2 - cy) <= 4;
+        }).length;
+        return { text: own(el), left: r.left, cy, cells };
+      })
+      .filter((l) => row.length === 0 || l.cy < rowTop || l.cy > rowBottom);
+
+    return {
+      row: row.map((d) => ({ text: d.text, filled: d.filled })),
+      links: [...new Set(links)].sort((a, b) => a - b),
+      labels,
+    };
   });

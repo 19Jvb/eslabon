@@ -30,6 +30,7 @@ import {
   openApp,
   paint,
   prefix,
+  readPreview,
   seed,
   test,
   transitionsOf,
@@ -107,7 +108,9 @@ anonymous.describe("T11 · páginas públicas", () => {
     expect(boxes, "los puntos van como lista ligera, sin cajas").toEqual([]);
   });
 
-  anonymous("5 · landing: vista previa estática de «Leer 20 minutos» con las iniciales L M X J V S D, sin fechas ni controles, oculta (aria-hidden) o role=img con otro nombre", async ({ page }) => {
+  // Actualizado en T11c (criterio nuevo, aprobado por el humano en tasks/todo.md): la fila ya no es «LMXJVSD», sino 7 días
+  // que terminan en «Hoy» (las iniciales de una semana fija, sin dígitos). La cadena y el mapa L/X/V, en details.spec.
+  anonymous("5 · landing: vista previa estática de «Leer 20 minutos» con 7 días que terminan en «Hoy» (iniciales consecutivas de una semana fija), sin fechas ni controles, oculta (aria-hidden) o role=img con otro nombre", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("img", { name: /^Historial de 12 semanas de/ }), "la vista previa no se anuncia como un mapa real").toHaveCount(0);
     const previews = await page.evaluate(() =>
@@ -129,8 +132,15 @@ anonymous.describe("T11 · páginas públicas", () => {
       expect(preview.label.trim().length, "role=img con nombre").toBeGreaterThan(0);
     }
     const rest = preview.text.replace("Leer20minutos", "");
-    expect(rest, "la fila de 7 días con sus iniciales, en orden").toContain("LMXJVSD");
     expect(rest, "sin fechas (página estática)").not.toMatch(/\d/);
+    const row = (await readPreview(page))!.row.map((d) => d.text);
+    expect(row, "una fila de 7 días en una línea que termina en «Hoy»").toHaveLength(7);
+    expect(row[6], "el último día es «Hoy»").toBe("Hoy");
+    // Como en la app, el penúltimo puede decir «Ayer»; el resto, iniciales seguidas de la semana (L M X J V S D, en ciclo).
+    const initials = row.slice(0, row[5] === "Ayer" ? 5 : 6);
+    expect(initials.every((d) => "LMXJVSD".includes(d) && d.length === 1), `iniciales: ${row.join(" ")}`).toBe(true);
+    const week = "LMXJVSD".repeat(2);
+    expect(week.includes(initials.join("")), `iniciales seguidas de una semana: ${row.join(" ")}`).toBe(true);
     expect(preview.controls, "sin botones, enlaces ni elementos enfocables dentro").toBe(0);
     expect(preview.cells, "hay un mapa pequeño (más elementos que el nombre y los 7 días)").toBeGreaterThan(7 + 12);
   });

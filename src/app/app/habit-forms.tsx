@@ -14,8 +14,9 @@ import {
   useState,
   useTransition,
 } from "react";
+import { cellClass, ChainLink, HeatmapRowLabels } from "@/app/habit-look";
 import { Spinner } from "@/app/spinner";
-import { buttonBase, focusRing, inputClass } from "@/app/ui";
+import { buttonBase, focusRing, inputClass, pressable } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, habitColor } from "@/lib/habits";
 import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
@@ -38,7 +39,7 @@ const buttonClass = `${buttonBase} text-sm`;
 const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
 const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
 const dangerButton = `${buttonClass} bg-red-700 text-white hover:bg-red-800`;
-const iconButton = `inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100 ${focusRing}`;
+const iconButton = `inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100 ${pressable} ${focusRing}`;
 
 type Habit = { id: string; name: string; color: string };
 type WeekDay = { day: string; label: string; initial: string; date: number };
@@ -230,10 +231,6 @@ function RenameForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
 
 const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
 
-// Empty and future cells are outlined in neutral-500: 3:1 or more on white (WCAG 1.4.11).
-const cellClass = (done: boolean, future: boolean, color: string) =>
-  future ? "border-dashed border-neutral-500" : done ? habitColor(color).done : "border-neutral-500";
-
 // Both computed from the same optimistic days as the buttons, so they change (and roll back) together.
 // The current streak leads: display face, larger and in the habit's 700.
 function HabitStats({
@@ -274,10 +271,6 @@ function HabitStats({
   );
 }
 
-const cellBase = "size-3 rounded-[3px] border";
-// Monday, Wednesday and Friday name their rows, as in a calendar.
-const rowLabels = ["L", "", "X", "", "V", "", ""];
-
 function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; today: string }) {
   const cells = heatmapWeeks(marked, today).flat();
   const done = cells.filter((cell) => cell.done).length;
@@ -289,11 +282,7 @@ function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; tod
   return (
     <div className="flex w-fit shrink-0 flex-col gap-2">
       <div className="flex gap-[3px]">
-        <div aria-hidden="true" className="grid grid-rows-7 gap-[3px] text-[10px] leading-3 text-neutral-600">
-          {rowLabels.map((label, i) => (
-            <span key={i}>{label}</span>
-          ))}
-        </div>
+        <HeatmapRowLabels />
         <div
           role="img"
           aria-label={`Historial de 12 semanas de ${habit.name}: ${done} de ${past} días cumplidos`}
@@ -307,7 +296,7 @@ function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; tod
               data-done={cell.done}
               data-future={cell.future || undefined}
               data-today={cell.day === today || undefined}
-              className={`${cellBase} ${cellClass(cell.done, cell.future, habit.color)} ${cell.day === today ? "outline-2 outline-offset-1 outline-neutral-900" : ""}`}
+              className={`${cellClass(cell.done, cell.future, habit.color)} ${cell.day === today ? "outline-2 outline-offset-1 outline-neutral-900" : ""}`}
             />
           ))}
         </div>
@@ -315,13 +304,15 @@ function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; tod
       <div aria-hidden="true" className="flex flex-col gap-1 text-xs text-neutral-600">
         <span>Últimas 12 semanas</span>
         <span className="flex gap-3">
-          {[
-            ["Cumplido", habitColor(habit.color).done],
-            ["Sin marcar", "border-neutral-500"],
-            ["Futuro", "border-dashed border-neutral-500"],
-          ].map(([text, look]) => (
+          {(
+            [
+              ["Cumplido", true, false],
+              ["Sin marcar", false, false],
+              ["Futuro", false, true],
+            ] as const
+          ).map(([text, done, future]) => (
             <span key={text} className="inline-flex items-center gap-1">
-              <span className={`${cellBase} ${look}`} />
+              <span className={cellClass(done, future, habit.color)} />
               <span>{text}</span>
             </span>
           ))}
@@ -384,20 +375,13 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-8">
       <div className="flex flex-col gap-3">
-        {/* Between two marked days, a link drawn in the habit's colour: the chain. It follows the optimistic
-            days and appears at once (no transition). The gaps grow to fill a phone and stay at 8 px above. */}
+        {/* The chain follows the optimistic days and appears at once (no transition). */}
         <div className="flex items-center">
           {days.map(({ day, label, initial, date }, i) => {
             const linked = i > 0 && shown.includes(day) && shown.includes(days[i - 1].day);
             return (
               <Fragment key={day}>
-                {i > 0 && (
-                  <span
-                    aria-hidden="true"
-                    data-link={linked || undefined}
-                    className={`h-1 flex-1 sm:w-2 sm:flex-none ${linked ? color.link : ""}`}
-                  />
-                )}
+                {i > 0 && <ChainLink linked={linked} color={habit.color} />}
                 <button
                   type="button"
                   data-day={day}

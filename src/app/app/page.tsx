@@ -56,7 +56,7 @@ async function HabitList() {
     return (
       <div className="flex flex-col items-start gap-3">
         <p className="text-neutral-700">
-          Aún no tienes hábitos. Crea el primero con el formulario de abajo o carga tres de ejemplo con su historial.
+          Aún no tienes hábitos. Crea el primero en «Nuevo hábito».
         </p>
         <LoadSampleForm />
       </div>

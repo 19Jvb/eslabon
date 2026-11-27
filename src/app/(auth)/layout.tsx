@@ -10,7 +10,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <header className="mb-6 text-center">
           <Link
             href="/"
-            className={`inline-flex items-center gap-2 rounded font-display text-2xl font-bold text-emerald-800 ${focusRing}`}
+            className={`inline-flex min-h-11 items-center gap-2 rounded px-1 font-display text-2xl font-bold text-emerald-800 ${focusRing}`}
           >
             <BrandGlyph />
             Eslabón

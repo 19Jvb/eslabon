@@ -22,7 +22,7 @@ export function AuthForm({ mode }: { mode: "login" | "registro" }) {
   const invalid = (field: "email" | "password") => (state?.field === field ? true : undefined);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <form action={submit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="email" className="font-medium">
@@ -70,6 +70,10 @@ export function AuthForm({ mode }: { mode: "login" | "registro" }) {
           {mode === "login" ? "Entrar" : "Crear cuenta"}
         </button>
       </form>
+
+      <div aria-hidden="true" className="flex items-center gap-3 text-sm text-neutral-600">
+        <span className="h-px flex-1 bg-neutral-200" />o<span className="h-px flex-1 bg-neutral-200" />
+      </div>
 
       <DemoForm demo={demo} disabled={submitting} className="border border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50" />
     </div>

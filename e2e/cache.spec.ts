@@ -7,7 +7,7 @@ import { test } from "./helpers";
 // Explícito: dentro del runner, request.newContext() hereda el storageState del fixture (la sesión).
 const NO_SESSION = { cookies: [], origins: [] };
 
-const PRIVATE_PAGES = [
+const PRIVATE_PAGES: { path: string; note: string; headers?: Record<string, string> }[] = [
   { path: "/app", note: "HTML" },
   // Sin ?_rsc, Next responde a una carga RSC con un 307 a /app?_rsc (también privado, pero no es la carga).
   { path: "/app?_rsc", note: "carga RSC", headers: { RSC: "1" } },

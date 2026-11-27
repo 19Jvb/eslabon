@@ -156,6 +156,9 @@
 - [x] **T14: E2E contra producción**
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.
 
+- [ ] **T14b: Cabeceras de caché privadas en /app** (XS). Origen: sugerencia de T14-r1 (privacidad). Con sesión, el HTML de /app salía con `Cache-Control: public, max-age=0, must-revalidate` y contenía el email.
+  - Aceptación: toda respuesta de `/app` (y de `/app/**`) lleva `Cache-Control` con `private` y `no-store`, comprobado EN PRODUCCIÓN con sesión (curl con la cookie de una sesión del usuario E2E) y en local con `next start`. `/`, `/login` y `/registro` siguen estáticas (○) y sin cambios de caché. Un E2E de Testing lo cubre (con sesión, la cabecera de /app contiene private y no-store). Sin romper los 167 E2E.
+
 ## Fase 5: Entrega
 - [ ] **T15a (Orquestador, justo antes de entregar): recargar los datos de ejemplo de la cuenta demo** (como la demo, borrar sus hábitos y llamar a `load_sample_data` con el hoy de Madrid), para que las rachas estén vivas el día que se evalúa. Borrar también las cuentas `e2e+…@example.com` acumuladas.
 - [ ] **T15: README** Documentar en «Decisiones»: la ventana de edición de 7 días es una decisión de producto confirmada por el humano el 2026-11-27 (racha honesta, sin cambiar la RLS y sin 84 botones por hábito). Los dos avisos de `db advisors`: (1) `authenticated_security_definer_function_executable` sobre load_sample_data, que es intencionado y está blindado (T09-r1a); (2) `auth_leaked_password_protection`, que hay que comprobar si el plan Free lo permite y activarlo, y si no, documentarlo. (URL, cuenta demo, diagrama del equipo, cómo ejecutarlo y decisiones) **y escaneo de secretos en todo el historial** (`git log -p` con los patrones de D-04).

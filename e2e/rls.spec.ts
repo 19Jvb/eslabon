@@ -2,7 +2,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, test } from "@playwright/test";
 import { env } from "./helpers";
 
-// D-06 contra la API real, solo con la publishable key. A = cuenta demo, B = usuario de E2E.
+// D-06 contra la API real, solo con la publishable key. A = usuario de E2E (dueño de los datos), B = cuenta demo
+// (el atacante): así la demo nunca escribe en su propia cuenta y sus datos de ejemplo no se tocan.
 
 function apiClient() {
   return createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
@@ -34,9 +35,9 @@ test.describe("aislamiento RLS entre dos usuarios", () => {
   const today = new Date().toISOString().slice(0, 10);
 
   test.beforeAll(async () => {
-    ({ client: a, userId: aId } = await signIn("DEMO"));
-    ({ client: b } = await signIn("E2E_USER"));
-    await Promise.all([cleanUp(a), cleanUp(b)]);
+    ({ client: a, userId: aId } = await signIn("E2E_USER"));
+    ({ client: b } = await signIn("DEMO"));
+    await cleanUp(a);
     const habit = await a.from("habits").insert({ name }).select("id").single();
     if (habit.error) throw new Error(`A no pudo crear su hábito: ${habit.error.message}`);
     habitId = habit.data.id;
@@ -45,7 +46,7 @@ test.describe("aislamiento RLS entre dos usuarios", () => {
   });
 
   test.afterAll(async () => {
-    await Promise.all([a && cleanUp(a), b && cleanUp(b)]);
+    if (a) await cleanUp(a);
   });
 
   test("B no lee el hábito de A ni sus check-ins", async () => {

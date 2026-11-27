@@ -153,7 +153,7 @@
   - Heredado de T02-r1: `ci.yml` con `timeout-minutes` y `push` limitado a `main` (los PR siguen con `pull_request`).
   - Paso del Orquestador tras la aprobación: crear los 4 secrets por la API de GitHub (cifrados con la clave pública del repo, sin mostrar los valores), lanzar el workflow con `workflow_dispatch` y comprobar que sale en verde.
   - Verificar: lanzado a mano, sale en verde.
-- [ ] **T14: E2E contra producción**
+- [x] **T14: E2E contra producción**
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.
 
 ## Fase 5: Entrega

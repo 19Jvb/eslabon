@@ -156,7 +156,7 @@
 - [x] **T14: E2E contra producción**
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.
 
-- [ ] **T14b: Cabeceras de caché privadas en /app** (XS). Origen: sugerencia de T14-r1 (privacidad). Con sesión, el HTML de /app salía con `Cache-Control: public, max-age=0, must-revalidate` y contenía el email.
+- [x] **T14b: Cabeceras de caché privadas en /app** (XS). Origen: sugerencia de T14-r1 (privacidad). Con sesión, el HTML de /app salía con `Cache-Control: public, max-age=0, must-revalidate` y contenía el email.
   - Aceptación: toda respuesta de `/app` (y de `/app/**`) lleva `Cache-Control` con `private` y `no-store`, comprobado EN PRODUCCIÓN con sesión (curl con la cookie de una sesión del usuario E2E) y en local con `next start`. `/`, `/login` y `/registro` siguen estáticas (○) y sin cambios de caché. Un E2E de Testing lo cubre (con sesión, la cabecera de /app contiene private y no-store). Sin romper los 167 E2E.
 
 ## Fase 5: Entrega

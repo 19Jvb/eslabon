@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Spinner } from "@/app/spinner";
+import { buttonBase } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { withFallback } from "@/lib/with-fallback";
 import { signOut } from "./actions";
@@ -16,7 +17,7 @@ export function SignOutForm() {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-neutral-400 bg-white px-4 text-sm font-medium text-neutral-900 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`${buttonBase} border border-neutral-400 bg-white text-sm text-neutral-900 hover:bg-neutral-100`}
       >
         {pending && <Spinner />}
         Cerrar sesión

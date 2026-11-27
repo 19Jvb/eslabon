@@ -18,3 +18,4 @@ Si la revisión sale **RECHAZADA**, el Orquestador devuelve a Develop los fallos
 | T07 | 1 | 0 de la app. Testing corrigió 1 test suyo que estaba mal (lo detectó Develop como DISCREPANCIA) y Develop arregló una violación de WCAG 2.5.3 que imponía el contrato | [T07-r1](T07-r1.md) |
 | T08 | 1 | 0 bloqueantes. Testing reprodujo el corte de max_rows (1000 de 1050) contra el PostgREST real y validó la paginación; 3 sugerencias pasadas a T09 y T11 | [T08-r1](T08-r1.md) |
 | T09 | 1 (en 2 fases) | 0 bloqueantes. Fase A (el SQL antes de aplicarlo, 44 casos adversariales): se incorporó S-1 (zona horaria de sesión manipulable con Prefer) **antes** del db push. Fase B: 98 E2E y la paginación probada con 1012 filas reales | [T09-r1](T09-r1.md) · [fase A](T09-r1a.md) |
+| T10 | 1 | 0 bloqueantes. Testing comprobó que las credenciales demo no están en el bundle del cliente y que los botones de auth se bloquean entre sí (una sonda propia, sin E2E previo) | [T10-r1](T10-r1.md) |

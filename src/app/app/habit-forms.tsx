@@ -13,6 +13,7 @@ import {
   useTransition,
 } from "react";
 import { Spinner } from "@/app/spinner";
+import { buttonBase, focusRing, inputClass } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, swatchClass } from "@/lib/habits";
 import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
@@ -31,9 +32,7 @@ function focusHeading() {
   document.getElementById(HABITS_HEADING_ID)?.focus();
 }
 
-const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700";
-const inputClass = `min-h-11 w-full rounded-lg border border-neutral-400 bg-white px-3 text-base text-neutral-900 aria-invalid:border-red-700 ${focusRing}`;
-const buttonClass = `inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`;
+const buttonClass = `${buttonBase} text-sm`;
 const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
 const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
 const dangerButton = `${buttonClass} bg-red-700 text-white hover:bg-red-800`;

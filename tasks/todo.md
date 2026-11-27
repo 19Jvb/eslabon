@@ -89,13 +89,14 @@
   - Paso del Orquestador tras la aprobación y con el OK del humano: aplicar la migración (`db push`) y cargar los datos de ejemplo en la cuenta demo, para que quien evalúe vea datos nada más entrar.
   - Heredado de T08-r1: (a) en `setCheckIn`, ante un 42501 se comprueba si el hábito existe (`select id … maybeSingle`): si no existe, HABIT_GONE; si existe, el genérico. Así nunca se dice «ya no existe» por error. (b) `fetchAll` pagina por clave (`habit_id`, `day`) en vez de por posición, para no saltarse filas si se borra una entre páginas, y su test simula el 416 real (PGRST103) en vez de un 200 vacío.
   - OJO (Orquestador, al planificar T08): la RLS de check_ins solo permite insertar días entre `current_date - 8` y `current_date + 1`. Un historial de unos 60 días NO se puede insertar desde el cliente. Hace falta una migración nueva con una función `security definer` (`set search_path = ''`, `revoke execute ... from public, anon`, grant solo a authenticated) que inserte los datos de ejemplo para `auth.uid()`, solo si el usuario no tiene hábitos (idempotente). Se llama por RPC desde una Server Action. La revisión de seguridad de esa función es obligatoria (D-06). La migración se aplica con el OK del humano.
-- [ ] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.
+- [x] **T10: Landing pública con el CTA de la demo** (S): SPEC F1. Heredado de T05-r1: la portada enlaza a /login y a /registro.
   - `/` responde 200 sin sesión y es estática (no lee cookies ni datos del usuario).
   - Contenido: h1 «Eslabón», el lema «No rompas la cadena.», una explicación de 1 o 2 frases y 3 puntos con estos títulos exactos: «Marca cada día», «Mira crecer tu racha» y «Tus datos son solo tuyos».
   - Acciones: el botón «Probar con la cuenta demo» (la misma Server Action `signInDemo` de T05 → `/app` con la demo) y los enlaces «Entrar» (→ /login) y «Crear cuenta» (→ /registro).
   - `<title>` «Eslabón · No rompas la cadena» y una `meta description` en español.
   - D-10 en el botón demo (un 500 → el genérico, sin perder la página). D-11 (axe y teclado). D-12 (375 px, 44×44).
 - [ ] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.
+  - Heredado de T10-r1: las dos copias del anillo de foco escritas a mano (`(auth)/layout.tsx:11`, `app/page.tsx:18`) pasan a usar `focusRing` de ui.ts; simplificar la firma de `DemoForm` (el `disabled` que no se usa).
   - Heredado de T08-r1: contraste de las celdas del mapa (WCAG 1.4.11, 3:1 como mínimo para los elementos gráficos): el borde de las no cumplidas y de las futuras, con `neutral-500` o más oscuro.
   - Heredado de T06-r2: al renombrar un hábito ya borrado, el foco no pasa por `body` (unos 275 ms) antes de llegar al h1.
   - Heredado de T05-r2: si la acción falla con un 500, el formulario conserva el email escrito. Si cabe sin complicar, los formularios de auth también funcionan antes de que cargue el JS (mejora progresiva); si no, se documenta como limitación.

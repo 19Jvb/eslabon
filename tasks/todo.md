@@ -190,4 +190,34 @@
   - Heredado de T17-r2: con el grant por columnas, la app pide columnas concretas (`select("user_id, linked_at")`), nunca `select("*")`; desvincular con `delete().eq("user_id", …)` sin returning de todas las columnas (si no, da 42501).
   - Heredado de T17-r1a para T19: normalizar el código (mayúsculas, sin espacios) antes de la RPC; aceptar solo `chat.type === 'private'`; limitar los `/vincular` fallidos por chat; al vincular, avisar en el chat de que la cuenta ha quedado vinculada (contra la ingeniería social). Para T20: no guardar el secreto en snippets del SQL Editor y no vincular nunca la cuenta demo con una cuenta personal de Telegram.
 - [ ] **T19: Webhook y bot:** `POST /api/telegram/webhook` con la verificación del secreto, y los comandos `/start <código>`, `/vincular <código>`, `/hoy` (lista de hábitos de hoy con botones en línea ✅/⬜ que marcan o desmarcan y editan el mensaje), `/desvincular` y `/ayuda`. Tests unitarios con mocks de la API de Telegram y de las RPC; mensajes en español.
+  - **Route** `src/app/api/telegram/webhook/route.ts` (POST):
+    - Si la cabecera `X-Telegram-Bot-Api-Secret-Token` no coincide con `TELEGRAM_WEBHOOK_SECRET` (comparación en tiempo constante, por ejemplo `timingSafeEqual` sobre los hashes) → **401** sin procesar nada. Sin secreto configurado → 503.
+    - Con el secreto bueno → siempre **200** rápido, también si el update no se entiende o si Telegram falla al enviar (así Telegram no reintenta en bucle).
+    - El proxy no la redirige.
+  - **Lógica** en una función pura `handleUpdate(update, deps)` en `src/lib/` con las dependencias inyectadas (las RPC de Supabase y la API de Telegram), desarrollada con TDD. La route solo la conecta.
+  - **La API de Telegram** se llama con `fetch` a `${TELEGRAM_API_BASE ?? "https://api.telegram.org"}/bot${TELEGRAM_BOT_TOKEN}/<método>`. `TELEGRAM_API_BASE` existe para que los tests apunten a un servidor simulado. El token nunca aparece en un log ni en una respuesta.
+  - **Solo chats privados** (`chat.type === "private"`); en otro tipo de chat, el texto «Úsame en un chat privado.» o ignorarlo.
+  - **Mensajes en texto plano** (sin `parse_mode`): los nombres de los hábitos los escribe el usuario y no se interpretan como formato.
+  - **Comandos (textos exactos):**
+    - `/start <código>` y `/vincular <código>`:
+      - el código se normaliza (mayúsculas, sin espacios) antes de la RPC;
+      - 'linked' → «¡Listo! Tu cuenta de Eslabón está vinculada. Si no has sido tú, envía /desvincular.»;
+      - 'invalid_code' → «El código no es válido o ha caducado. Genera otro en la app.».
+    - `/start` sin código → «Hola, soy el bot de Eslabón. Para empezar, vincula tu cuenta desde la app con «Vincular con Telegram».».
+    - `/vincular` sin código → «Envía /vincular seguido del código que te da la app.».
+    - `/hoy`:
+      - sin vínculo → «Primero vincula tu cuenta desde la app con «Vincular con Telegram».»;
+      - vinculado y sin hábitos → «Aún no tienes hábitos. Créalos en la app.»;
+      - con hábitos → «Tus hábitos de hoy (<fecha larga es-ES del today de la RPC>):» y un teclado en línea con un botón por hábito, «✅ <nombre>» o «⬜ <nombre>», con `callback_data` `c:<habit_id>:<1|0>` (1 = marcar). Cabe en 64 bytes.
+    - `/desvincular` → «Tu cuenta se ha desvinculado.» (o «No había ninguna cuenta vinculada.»).
+    - `/ayuda` y cualquier otro texto → la lista de comandos.
+  - **Botón pulsado** (`callback_query`):
+    - `telegram_set_checkin(done)`;
+    - después `answerCallbackQuery` («Marcado» o «Desmarcado») y `editMessageText` con el teclado actualizado (vuelve a pedir `telegram_today`);
+    - si 'not_linked' o 'not_found', la respuesta del callback lo dice.
+    - Un `callback_data` mal formado se ignora sin error.
+  - **Sin `service_role`:** las RPC se llaman con la publishable key y `p_secret` = `TELEGRAM_WEBHOOK_SECRET`.
+  - **Arbitraje del Orquestador sobre «limitar los /vincular fallidos»:** NO se implementa un contador (haría falta otra migración o estado en memoria, que no sirve en serverless). Riesgo aceptado y documentado: el espacio es de 2^40, el código vale 10 minutos, hay uno por usuario y Telegram ya limita el ritmo de mensajes por bot.
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` y `TELEGRAM_API_BASE` en `.env.example`, sin valor.
+
 - [ ] **T20: Puesta en marcha y documentación:** las variables en Vercel, `setWebhook` con el `secret_token`, el secreto en `private` (SQL), una prueba real con Telegram (el humano vincula su cuenta y marca un día desde el bot) y el README actualizado.

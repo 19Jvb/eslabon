@@ -14,12 +14,13 @@ export function useDemoSignIn() {
   return useActionState(demoAction, null);
 }
 
+// disabled: the page's other action is running (the button is always disabled while its own runs).
 type DemoFormProps = { demo: ReturnType<typeof useDemoSignIn>; disabled?: boolean; className: string };
 
-export function DemoForm({ demo: [state, tryDemo, pending], disabled = pending, className }: DemoFormProps) {
+export function DemoForm({ demo: [state, tryDemo, pending], disabled, className }: DemoFormProps) {
   return (
     <form action={tryDemo} className="flex flex-col gap-2">
-      <button type="submit" disabled={disabled} className={`${buttonBase} w-full ${className}`}>
+      <button type="submit" disabled={pending || disabled} className={`${buttonBase} w-full ${className}`}>
         {pending && <Spinner />}
         Probar con la cuenta demo
       </button>

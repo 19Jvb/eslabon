@@ -1,21 +1,60 @@
 import { z } from "zod";
 import { GENERIC_ERROR } from "@/lib/auth";
 
-// The only palette: ids match the DB check constraint, labels are what the user sees.
+// The only palette: ids match the DB check constraint, labels are what the user sees. A habit's color runs
+// through its chain: swatch and done heatmap cells in 600 (3:1 or more on white), marked day buttons in 700
+// (white text at 4.5:1 or more). Tailwind only generates classes written out in full, hence the repetition.
 export const HABIT_COLORS = {
-  red: { label: "Rojo", swatch: "bg-red-600" },
-  orange: { label: "Naranja", swatch: "bg-orange-500" },
-  amber: { label: "Ámbar", swatch: "bg-amber-400" },
-  green: { label: "Verde", swatch: "bg-green-600" },
-  blue: { label: "Azul", swatch: "bg-blue-600" },
-  violet: { label: "Violeta", swatch: "bg-violet-600" },
+  red: {
+    label: "Rojo",
+    swatch: "bg-red-600",
+    pressed: "aria-pressed:border-red-700 aria-pressed:bg-red-700 aria-pressed:hover:bg-red-800",
+    done: "border-red-600 bg-red-600",
+  },
+  orange: {
+    label: "Naranja",
+    swatch: "bg-orange-600",
+    pressed: "aria-pressed:border-orange-700 aria-pressed:bg-orange-700 aria-pressed:hover:bg-orange-800",
+    done: "border-orange-600 bg-orange-600",
+  },
+  amber: {
+    label: "Ámbar",
+    swatch: "bg-amber-600",
+    pressed: "aria-pressed:border-amber-700 aria-pressed:bg-amber-700 aria-pressed:hover:bg-amber-800",
+    done: "border-amber-600 bg-amber-600",
+  },
+  green: {
+    label: "Verde",
+    swatch: "bg-green-600",
+    pressed: "aria-pressed:border-green-700 aria-pressed:bg-green-700 aria-pressed:hover:bg-green-800",
+    done: "border-green-600 bg-green-600",
+  },
+  blue: {
+    label: "Azul",
+    swatch: "bg-blue-600",
+    pressed: "aria-pressed:border-blue-700 aria-pressed:bg-blue-700 aria-pressed:hover:bg-blue-800",
+    done: "border-blue-600 bg-blue-600",
+  },
+  violet: {
+    label: "Violeta",
+    swatch: "bg-violet-600",
+    pressed: "aria-pressed:border-violet-700 aria-pressed:bg-violet-700 aria-pressed:hover:bg-violet-800",
+    done: "border-violet-600 bg-violet-600",
+  },
 } as const;
 
 type HabitColor = keyof typeof HABIT_COLORS;
 export const COLOR_IDS = Object.keys(HABIT_COLORS) as [HabitColor, ...HabitColor[]];
 
-export function swatchClass(color: string): string {
-  return Object.hasOwn(HABIT_COLORS, color) ? HABIT_COLORS[color as HabitColor].swatch : "bg-neutral-400";
+// The DB only accepts palette ids; neutral is for anything else, so a bad row still renders.
+const UNKNOWN_COLOR = {
+  swatch: "bg-neutral-500",
+  pressed: "aria-pressed:border-neutral-700 aria-pressed:bg-neutral-700 aria-pressed:hover:bg-neutral-800",
+  done: "border-neutral-600 bg-neutral-600",
+};
+
+export function habitColor(color: string): typeof UNKNOWN_COLOR {
+  return Object.hasOwn(HABIT_COLORS, color) ? HABIT_COLORS[color as HabitColor] : UNKNOWN_COLOR;
 }
 
 const DUPLICATE_HABIT = "Ya tienes un hábito con ese nombre.";

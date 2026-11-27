@@ -8,14 +8,17 @@ import { GENERIC_ERROR } from "@/lib/auth";
 import { withFallback } from "@/lib/with-fallback";
 import { signIn, signUp } from "./actions";
 
-const failed = { error: GENERIC_ERROR };
-const submitActions = { login: withFallback(signIn, failed), registro: withFallback(signUp, failed) };
+// A 500 brings no state back from the server, so the fallback keeps the email that was typed.
+const keepEmail =
+  (action: typeof signIn) =>
+  (prev: Parameters<typeof signIn>[0], formData: FormData) =>
+    withFallback(action, { error: GENERIC_ERROR, email: String(formData.get("email") ?? "") })(prev, formData);
+const submitActions = { login: keepEmail(signIn), registro: keepEmail(signUp) };
 
 export function AuthForm({ mode }: { mode: "login" | "registro" }) {
   const [state, submit, submitting] = useActionState(submitActions[mode], null);
   const demo = useDemoSignIn();
   const [, , demoPending] = demo;
-  const busy = submitting || demoPending;
   const invalid = (field: "email" | "password") => (state?.field === field ? true : undefined);
 
   return (
@@ -62,17 +65,13 @@ export function AuthForm({ mode }: { mode: "login" | "registro" }) {
             {state.error}
           </p>
         )}
-        <button type="submit" disabled={busy} className={`${buttonBase} w-full bg-emerald-700 text-white hover:bg-emerald-800`}>
+        <button type="submit" disabled={submitting || demoPending} className={`${buttonBase} w-full bg-emerald-700 text-white hover:bg-emerald-800`}>
           {submitting && <Spinner />}
           {mode === "login" ? "Entrar" : "Crear cuenta"}
         </button>
       </form>
 
-      <DemoForm
-        demo={demo}
-        disabled={busy}
-        className="border border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50"
-      />
+      <DemoForm demo={demo} disabled={submitting} className="border border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50" />
     </div>
   );
 }

@@ -17,7 +17,7 @@ export function SignOutForm() {
       <button
         type="submit"
         disabled={pending}
-        className={`${buttonBase} border border-neutral-400 bg-white text-sm text-neutral-900 hover:bg-neutral-100`}
+        className={`${buttonBase} border border-neutral-400 bg-white text-sm whitespace-nowrap text-neutral-900 hover:bg-neutral-100`}
       >
         {pending && <Spinner />}
         Cerrar sesión

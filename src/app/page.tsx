@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DemoButton } from "@/app/demo-form";
+import { ProductPreview } from "@/app/product-preview";
 import { buttonBase } from "@/app/ui";
 
 export const metadata: Metadata = {
@@ -49,11 +50,13 @@ export default function Home() {
         </div>
       </section>
 
-      <ul className="mx-auto grid w-full max-w-4xl gap-4 px-4 pb-16 sm:grid-cols-3">
+      <ProductPreview />
+
+      <ul className="mx-auto grid w-full max-w-4xl gap-6 px-4 pb-16 sm:grid-cols-3 sm:gap-8">
         {points.map((point) => (
-          <li key={point.title} className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <li key={point.title} className="border-t border-neutral-300 pt-4">
             <h2 className="text-lg font-semibold text-neutral-900">{point.title}</h2>
-            <p className="mt-2 text-neutral-700">{point.text}</p>
+            <p className="mt-1 text-pretty text-neutral-700">{point.text}</p>
           </li>
         ))}
       </ul>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BrandGlyph } from "@/app/brand-glyph";
+import { focusRing } from "@/app/ui";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -8,8 +10,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <header className="mb-6 text-center">
           <Link
             href="/"
-            className="rounded text-2xl font-bold text-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            className={`inline-flex items-center gap-2 rounded font-display text-2xl font-bold text-emerald-800 ${focusRing}`}
           >
+            <BrandGlyph />
             Eslabón
           </Link>
           <p className="mt-1 text-sm text-neutral-600">No rompas la cadena.</p>

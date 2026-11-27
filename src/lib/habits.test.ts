@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CheckIn, COLOR_IDS, HABIT_COLORS, HabitRef, habitErrorMessage, NewHabit, RenameHabit, swatchClass } from "./habits";
+import { CheckIn, COLOR_IDS, HABIT_COLORS, habitColor, HabitRef, habitErrorMessage, NewHabit, RenameHabit } from "./habits";
 
 const ID = "3f1c2a7e-9b4d-4e2a-8c1f-5d6e7f809a1b";
 const firstMessage = (result: { error?: { issues: { message: string }[] } }) => result.error?.issues[0].message;
@@ -10,11 +10,18 @@ describe("palette", () => {
     expect(COLOR_IDS.map((id) => HABIT_COLORS[id].label)).toEqual(["Rojo", "Naranja", "Ámbar", "Verde", "Azul", "Violeta"]);
   });
 
-  it("maps each color to its swatch class and an unknown one to a neutral class", () => {
-    expect(swatchClass("red")).toBe("bg-red-600");
-    expect(swatchClass("blue")).toBe("bg-blue-600");
-    expect(swatchClass("pink")).toBe("bg-neutral-400");
-    expect(swatchClass("toString")).toBe("bg-neutral-400");
+  it("maps each color to its classes and an unknown one to a neutral palette", () => {
+    expect(habitColor("red")).toBe(HABIT_COLORS.red);
+    expect(habitColor("blue").done).toBe("border-blue-600 bg-blue-600");
+    expect(habitColor("pink").swatch).toBe("bg-neutral-500");
+    expect(habitColor("toString").swatch).toBe("bg-neutral-500");
+  });
+
+  it("writes every class literally, in the color it belongs to (Tailwind only sees full class names)", () => {
+    for (const id of COLOR_IDS) {
+      const { swatch, pressed, done } = HABIT_COLORS[id];
+      for (const cls of `${swatch} ${pressed} ${done}`.split(" ")) expect(cls).toContain(`-${id}-`);
+    }
   });
 });
 

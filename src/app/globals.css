@@ -1,1 +1,27 @@
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+
+  ::selection {
+    background-color: var(--color-emerald-200);
+    color: var(--color-emerald-950);
+  }
+
+  input {
+    caret-color: var(--color-emerald-700);
+  }
+}

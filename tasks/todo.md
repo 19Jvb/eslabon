@@ -95,7 +95,7 @@
   - Acciones: el botón «Probar con la cuenta demo» (la misma Server Action `signInDemo` de T05 → `/app` con la demo) y los enlaces «Entrar» (→ /login) y «Crear cuenta» (→ /registro).
   - `<title>` «Eslabón · No rompas la cadena» y una `meta description` en español.
   - D-10 en el botón demo (un 500 → el genérico, sin perder la página). D-11 (axe y teclado). D-12 (375 px, 44×44).
-- [ ] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.
+- [x] **T11: Pulido visual (identidad de cadena y eslabones) y accesibilidad** (M): D-11 y D-12 en todas las páginas.
   - Dirección visual (Orquestador con la skill impeccable, modo *polish*: se conserva la identidad actual, con la paleta verde, la estructura y los textos; las capturas de partida están revisadas):
     1. **Tipografía propia** con `next/font/google` (viene con Next, se autoaloja en el build y no es una dependencia nueva): **Bricolage Grotesque** (600–700) para el h1 y los encabezados, e **Instrument Sans** para el texto y la UI. `display: swap`. En tiempo de ejecución no puede haber ninguna petición a fonts.googleapis/gstatic.
     2. **El color del hábito recorre su cadena:** los botones de día marcados y las celdas cumplidas del mapa usan el color del hábito (tono 700 con texto blanco en los botones, con contraste de 4.5:1 o más; tono 600 o 700 en las celdas), en lugar del verde para todos. La paleta, en un solo sitio (`src/lib/habits.ts`). Se mantiene cumplido = relleno y no cumplido = solo borde (WCAG 1.4.1).

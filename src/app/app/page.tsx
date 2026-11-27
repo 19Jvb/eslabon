@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
+import { focusRing } from "@/app/ui";
 import { dayNames, lastWeek } from "@/lib/dates";
 import { fetchAll, PAGE_SIZE } from "@/lib/fetch-all";
 import { HABITS_HEADING_ID } from "@/lib/habits";
@@ -14,8 +15,8 @@ export const instant = false;
 
 export default function AppPage() {
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8">
-      <h1 id={HABITS_HEADING_ID} tabIndex={-1} className="rounded text-2xl font-semibold text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-3 py-8 sm:px-4">
+      <h1 id={HABITS_HEADING_ID} tabIndex={-1} className={`rounded text-2xl font-semibold text-neutral-900 ${focusRing}`}>
         Tus hábitos
       </h1>
       <HabitListNotice>

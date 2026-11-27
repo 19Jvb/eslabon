@@ -2,7 +2,9 @@
 
 import {
   createContext,
+  Fragment,
   type ReactNode,
+  type RefObject,
   startTransition,
   use,
   useActionState,
@@ -126,11 +128,12 @@ export function NewHabitForm() {
         </div>
         <fieldset>
           <legend className="mb-2 font-medium">Color</legend>
-          <div className="flex flex-wrap gap-2">
+          {/* Two even columns on a phone, three on a tablet, one row from 768 px: no colour left on its own. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:flex md:justify-between">
             {COLOR_IDS.map((color) => (
               <label
                 key={color}
-                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-neutral-300 px-3 text-sm has-checked:border-neutral-900 has-checked:bg-neutral-100"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 text-sm has-checked:border-neutral-900 has-checked:bg-neutral-100"
               >
                 <input
                   type="radio"
@@ -232,7 +235,18 @@ const cellClass = (done: boolean, future: boolean, color: string) =>
   future ? "border-dashed border-neutral-500" : done ? habitColor(color).done : "border-neutral-500";
 
 // Both computed from the same optimistic days as the buttons, so they change (and roll back) together.
-function HabitStats({ marked, today }: { marked: string[]; today: string }) {
+// The current streak leads: display face, larger and in the habit's 700.
+function HabitStats({
+  marked,
+  today,
+  color,
+  streakRef,
+}: {
+  marked: string[];
+  today: string;
+  color: string;
+  streakRef: RefObject<HTMLElement | null>;
+}) {
   const stats = [
     ["Racha actual", dayCount(currentStreak(marked, today))],
     ["Mejor racha", dayCount(bestStreak(marked))],
@@ -241,15 +255,28 @@ function HabitStats({ marked, today }: { marked: string[]; today: string }) {
 
   return (
     <dl className="grid grid-cols-3 gap-2 sm:gap-4">
-      {stats.map(([term, value]) => (
+      {stats.map(([term, value], i) => (
         <div key={term}>
           <dt className="text-xs text-neutral-600">{term}</dt>
-          <dd className="font-semibold text-neutral-900 tabular-nums">{value}</dd>
+          {i === 0 ? (
+            <dd
+              ref={streakRef}
+              className={`origin-left font-display text-2xl leading-tight font-semibold tabular-nums ${habitColor(color).streak}`}
+            >
+              {value}
+            </dd>
+          ) : (
+            <dd className="font-semibold text-neutral-900 tabular-nums">{value}</dd>
+          )}
         </div>
       ))}
     </dl>
   );
 }
+
+const cellBase = "size-3 rounded-[3px] border";
+// Monday, Wednesday and Friday name their rows, as in a calendar.
+const rowLabels = ["L", "", "X", "", "V", "", ""];
 
 function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; today: string }) {
   const cells = heatmapWeeks(marked, today).flat();
@@ -258,43 +285,92 @@ function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; tod
 
   // Weeks are columns (Monday on top): grid-flow-col fills the 7 rows of each column in order.
   // Done cells are filled, the rest only outlined (WCAG 1.4.1: not just a change of colour).
+  // The row labels and the legend repeat what the role="img" name says, so they are hidden from assistive tech.
   return (
-    <div
-      role="img"
-      aria-label={`Historial de 12 semanas de ${habit.name}: ${done} de ${past} días cumplidos`}
-      className="grid w-fit shrink-0 grid-flow-col grid-rows-7 gap-1"
-    >
-      {cells.map((cell) => (
-        <span
-          key={cell.day}
-          aria-hidden="true"
-          data-day={cell.day}
-          data-done={cell.done}
-          data-future={cell.future || undefined}
-          className={`size-4 rounded-sm border ${cellClass(cell.done, cell.future, habit.color)}`}
-        />
-      ))}
+    <div className="flex w-fit shrink-0 flex-col gap-2">
+      <div className="flex gap-[3px]">
+        <div aria-hidden="true" className="grid grid-rows-7 gap-[3px] text-[10px] leading-3 text-neutral-600">
+          {rowLabels.map((label, i) => (
+            <span key={i}>{label}</span>
+          ))}
+        </div>
+        <div
+          role="img"
+          aria-label={`Historial de 12 semanas de ${habit.name}: ${done} de ${past} días cumplidos`}
+          className="grid grid-flow-col grid-rows-7 gap-[3px]"
+        >
+          {cells.map((cell) => (
+            <span
+              key={cell.day}
+              aria-hidden="true"
+              data-day={cell.day}
+              data-done={cell.done}
+              data-future={cell.future || undefined}
+              data-today={cell.day === today || undefined}
+              className={`${cellBase} ${cellClass(cell.done, cell.future, habit.color)} ${cell.day === today ? "outline-2 outline-offset-1 outline-neutral-900" : ""}`}
+            />
+          ))}
+        </div>
+      </div>
+      <div aria-hidden="true" className="flex flex-col gap-1 text-xs text-neutral-600">
+        <span>Últimas 12 semanas</span>
+        <span className="flex gap-3">
+          {[
+            ["Cumplido", habitColor(habit.color).done],
+            ["Sin marcar", "border-neutral-500"],
+            ["Futuro", "border-dashed border-neutral-500"],
+          ].map(([text, look]) => (
+            <span key={text} className="inline-flex items-center gap-1">
+              <span className={`${cellBase} ${look}`} />
+              <span>{text}</span>
+            </span>
+          ))}
+        </span>
+      </div>
     </div>
   );
 }
 
+const toggled = (days: string[], { day, done }: { day: string; done: boolean }) =>
+  done ? [...days, day] : days.filter((d) => d !== day);
+
+// The streak figure grows for a moment when the user makes it go up (Web Animations: nothing is remounted).
+function pulse(figure: HTMLElement | null) {
+  if (!figure || !matchMedia("(prefers-reduced-motion: no-preference)").matches) return;
+  figure.animate([{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }], {
+    duration: 180,
+    easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+  });
+}
+
 function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
-  const [shown, setShown] = useOptimistic(marked, (current, { day, done }: { day: string; done: boolean }) =>
-    done ? [...current, day] : current.filter((d) => d !== day),
-  );
+  const [shown, setShown] = useOptimistic(marked, toggled);
   const [error, setError] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const streakRef = useRef<HTMLElement>(null);
   const notify = use(ListNotice);
   const id = useId();
+  const today = days[days.length - 1].day;
+  const color = habitColor(habit.color);
+
+  // Only a change made by the user is announced, never the page load.
+  const announce = (streak: number) => setAnnouncement(`Racha actual de ${habit.name}: ${dayCount(streak)}`);
 
   // Sends the intent read from what is on screen, so a fast double click marks and then unmarks.
   function toggle(day: string) {
     const done = !shown.includes(day);
+    const before = currentStreak(shown, today);
+    const after = currentStreak(toggled(shown, { day, done }), today);
     setError(null);
     notify(null);
+    if (after !== before) announce(after);
+    if (after > before) pulse(streakRef.current);
     startTransition(async () => {
       setShown({ day, done });
       const result = await checkInAction({ habitId: habit.id, day, done });
       if (result.ok) return;
+      // Rolled back: the streak on screen is the old one again.
+      if (after !== before) announce(before);
       if (result.error === HABIT_GONE) {
         notify(result.error);
         focusHeading();
@@ -304,37 +380,50 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
     });
   }
 
-  const today = days[days.length - 1].day;
-
   // From 768 px: the days with their stats on the left and the heatmap on the right; stacked below that.
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-8">
       <div className="flex flex-col gap-3">
-        <div className="flex justify-between sm:justify-start sm:gap-2">
-          {days.map(({ day, label, initial, date }) => (
-            <button
-              key={day}
-              type="button"
-              data-day={day}
-              aria-pressed={shown.includes(day)}
-              onClick={() => toggle(day)}
-              className={`flex size-11 flex-col items-center justify-center rounded-lg border border-neutral-500 text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-out ${habitColor(habit.color).pressed} ${focusRing}`}
-            >
-              {/* The fill is the app's only motion (none with reduced motion).
-                  The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
-                  does not contain the visible «J 26». */}
-              <span className="sr-only">{`${label}: ${habit.name}`}</span>
-              <span aria-hidden="true" className="text-xs leading-none">
-                {initial}
-              </span>
-              <span aria-hidden="true" className="text-sm leading-tight font-semibold tabular-nums">
-                {date}
-              </span>
-            </button>
-          ))}
+        {/* Between two marked days, a link drawn in the habit's colour: the chain. It follows the optimistic
+            days and appears at once (no transition). The gaps grow to fill a phone and stay at 8 px above. */}
+        <div className="flex items-center">
+          {days.map(({ day, label, initial, date }, i) => {
+            const linked = i > 0 && shown.includes(day) && shown.includes(days[i - 1].day);
+            return (
+              <Fragment key={day}>
+                {i > 0 && (
+                  <span
+                    aria-hidden="true"
+                    data-link={linked || undefined}
+                    className={`h-1 flex-1 sm:w-2 sm:flex-none ${linked ? color.link : ""}`}
+                  />
+                )}
+                <button
+                  type="button"
+                  data-day={day}
+                  aria-pressed={shown.includes(day)}
+                  onClick={() => toggle(day)}
+                  className={`flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${day === today ? "border-2 border-neutral-900" : "border border-neutral-500"} ${color.pressed} ${focusRing}`}
+                >
+                  {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
+                      does not contain the visible «J 26». Today and yesterday say so instead of an initial. */}
+                  <span className="sr-only">{`${label}: ${habit.name}`}</span>
+                  <span aria-hidden="true" className="mb-1 text-xs leading-none">
+                    {i >= days.length - 2 ? label : initial}
+                  </span>
+                  <span aria-hidden="true" className="text-sm leading-tight font-semibold tabular-nums">
+                    {date}
+                  </span>
+                </button>
+              </Fragment>
+            );
+          })}
         </div>
         <ErrorMessage id={`${id}-error`} error={error} />
-        <HabitStats marked={shown} today={today} />
+        <HabitStats marked={shown} today={today} color={habit.color} streakRef={streakRef} />
+        <p aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
       </div>
       <Heatmap habit={habit} marked={shown} today={today} />
     </div>
@@ -422,8 +511,10 @@ export function HabitItem({ habit, days, marked }: { habit: Habit; days: WeekDay
         onClose={() => {
           if (!deleted.current) deleteButtonRef.current?.focus();
         }}
-        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-white p-6 shadow-xl backdrop:bg-neutral-900/50"
+        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-white p-6 shadow-xl backdrop:bg-neutral-900/50 starting:scale-97 starting:opacity-0 motion-safe:transition-[opacity,scale] motion-safe:duration-150 motion-safe:ease-out"
       >
+        {/* Enters with a short fade and scale from @starting-style; it closes at once. Its buttons are 48 px
+            tall, so even at the 0.97 of the entry they stay at 44 px or more. */}
         <p id={`${id}-question`} className="break-words text-neutral-900">
           ¿Borrar «{habit.name}»? Se perderá su historial.
         </p>
@@ -431,10 +522,10 @@ export function HabitItem({ habit, days, marked }: { habit: Habit; days: WeekDay
           <ErrorMessage id={`${id}-error`} error={deleteError} />
         </div>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={() => dialogRef.current?.close()} className={secondaryButton}>
+          <button type="button" onClick={() => dialogRef.current?.close()} className={`${secondaryButton} py-3.5`}>
             Cancelar
           </button>
-          <button type="button" onClick={confirmDelete} disabled={deleting} className={dangerButton}>
+          <button type="button" onClick={confirmDelete} disabled={deleting} className={`${dangerButton} py-3.5`}>
             {deleting && <Spinner />}
             Sí, borrar
           </button>

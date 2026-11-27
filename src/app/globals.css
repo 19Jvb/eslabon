@@ -5,6 +5,11 @@
   --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* A strong ease-out for every motion (Tailwind's `ease-out` reads it): fast start, soft landing. */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 @layer base {
   html {
     color-scheme: light;

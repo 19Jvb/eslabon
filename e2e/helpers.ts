@@ -345,3 +345,224 @@ export async function expectHeatmap(page: Page, habit: string, marks: string[], 
     }
   }
 }
+
+// ---------- Color y tipografía medidos (T11 y T11b) ----------
+// Los colores se normalizan con un canvas: Chrome los da en oklch o lab y el canvas los pasa a sRGB y compone la
+// transparencia. El contraste se calcula con la fórmula de WCAG 2.x.
+
+export type RGB = [number, number, number];
+export const COLORS = ["red", "orange", "amber", "green", "blue", "violet"] as const;
+export type Color = (typeof COLORS)[number];
+/** Tono (HSL) de cada color del hábito, con margen para el 600 y el 700 de Tailwind (red-700 ≈ 358°, amber-700 ≈ 25°…). */
+export const HUES: Record<Color, [number, number]> = {
+  red: [345, 368],
+  orange: [8, 21],
+  amber: [21, 50],
+  green: [120, 170],
+  blue: [200, 245],
+  violet: [250, 290],
+};
+
+/** Pinta las capas (de abajo arriba) sobre blanco en un canvas y devuelve el sRGB resultante. */
+export function paint(page: Page, layers: string[]): Promise<RGB> {
+  return page.evaluate((layers) => {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) throw new Error("sin canvas");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 1, 1);
+    for (const layer of layers) {
+      ctx.fillStyle = layer;
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, layers);
+}
+
+/** Fondos de los ancestros del elemento, del <html> hacia abajo (sin el propio elemento si `own` es false). */
+export const backdrop = (target: Locator, own = true) =>
+  target.evaluate((el, own) => {
+    const chain: string[] = [];
+    for (let n: Element | null = own ? el : el.parentElement; n; n = n.parentElement) {
+      chain.unshift(getComputedStyle(n).backgroundColor);
+    }
+    return chain;
+  }, own);
+
+const channel = (v: number) => {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+};
+export const luminance = ([r, g, b]: RGB) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+export const contrast = (a: RGB, b: RGB) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+export const hue = ([r, g, b]: RGB) => {
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return NaN;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+};
+export const inHue = (rgb: RGB, color: Color) => {
+  const [lo, hi] = HUES[color];
+  const h = hue(rgb);
+  return (h >= lo && h <= hi) || (h + 360 >= lo && h + 360 <= hi);
+};
+
+/** La familia tipográfica normalizada para comparar nombres de familias (next/font puede añadir prefijos y sufijos). */
+export const families = (target: Locator) =>
+  target.evaluate((el) => getComputedStyle(el).fontFamily.toLowerCase().replace(/[^a-z]/g, ""));
+
+// ---------- Movimiento (T11, ampliado en T11b con permiso del humano) ----------
+// Lista blanca de T11b, todo motion-safe: (1) el relleno del botón de día (colores ≤ 200 ms con la curva EASE_OUT);
+// (2) el feedback al pulsar (transform ≤ 160 ms) en los botones; (3) el pulso de la cifra de «Racha actual» cuando sube
+// por una acción; (4) la entrada del diálogo de borrar (opacity y transform ≤ 200 ms, más display/overlay para
+// @starting-style). En Tailwind 4, `scale-*` usa la propiedad `scale`: cuentan como transform `transform`, `translate`,
+// `scale` y `rotate`.
+
+export const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+export const TRANSFORM = ["transform", "translate", "scale", "rotate"];
+/** Las propiedades de `transition-colors` de Tailwind 4. */
+const COLOR_PROPS = [
+  "color",
+  "background-color",
+  "border-color",
+  "outline-color",
+  "text-decoration-color",
+  "fill",
+  "stroke",
+  "--tw-gradient-from",
+  "--tw-gradient-via",
+  "--tw-gradient-to",
+];
+
+/** Transiciones del elemento, una por propiedad (las de duración 0 no cuentan), con su duración en ms y su curva. */
+export const transitionsOf = (target: Locator) =>
+  target.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const list = (v: string) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+    const ms = (v: string) => parseFloat(v) * (v.endsWith("ms") ? 1 : 1000);
+    const durations = list(s.transitionDuration).map(ms);
+    const curves = list(s.transitionTimingFunction);
+    return list(s.transitionProperty)
+      .map((property, i) => ({ property, ms: durations[i % durations.length], curve: curves[i % curves.length] }))
+      .filter((t) => t.property !== "none" && t.ms > 0);
+  });
+
+/** Elementos (fuera del indicador de Next) con alguna transición o animación. Con reduce tiene que salir vacío. */
+export const moving = (page: Page, allowed: string) =>
+  page.evaluate((allowed) => {
+    const secs = (v: string) => Math.max(...v.split(",").map((s) => parseFloat(s) * (s.trim().endsWith("ms") ? 0.001 : 1)));
+    return [...document.querySelectorAll("body *")]
+      .filter((el) => !(allowed && el.matches(allowed)) && !el.closest("nextjs-portal"))
+      .filter((el) => {
+        const s = getComputedStyle(el);
+        return secs(s.transitionDuration) > 0 || (s.animationName !== "none" && secs(s.animationDuration) > 0);
+      })
+      .map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""} «${(el.textContent ?? "").trim().slice(0, 30)}» transition=${getComputedStyle(el).transitionDuration}`);
+  }, allowed);
+
+/**
+ * En reposo, lo que se mueve fuera de la lista blanca: ninguna animación CSS; transiciones solo en botones y enlaces
+ * (transform ≤ 160 ms), en los botones de día (además, colores ≤ 200 ms) y en el diálogo (opacity, transform, display
+ * y overlay ≤ 200 ms). Devuelve una línea por elemento que se sale.
+ */
+export const motionOutsideWhitelist = (page: Page) =>
+  page.evaluate(
+    ({ TRANSFORM, COLOR_PROPS }) => {
+      const list = (v: string) => v.split(/,(?![^(]*\))/).map((x) => x.trim());
+      const ms = (v: string) => parseFloat(v) * (v.endsWith("ms") ? 1 : 1000);
+      const out: string[] = [];
+      for (const el of document.querySelectorAll("body *")) {
+        if (el.closest("nextjs-portal")) continue;
+        const s = getComputedStyle(el);
+        const durations = list(s.transitionDuration).map(ms);
+        const props = list(s.transitionProperty)
+          .map((p, i) => ({ p, ms: durations[i % durations.length] }))
+          .filter((t) => t.p !== "none" && t.ms > 0);
+        const animated = s.animationName !== "none" && Math.max(...list(s.animationDuration).map(ms)) > 0;
+        if (!props.length && !animated) continue;
+        const day = el.matches("button[data-day]");
+        const pressable = el.matches("button, a");
+        const dialog = el.closest('dialog, [role="dialog"]') !== null;
+        const allowed = (t: { p: string; ms: number }) =>
+          (TRANSFORM.includes(t.p) && ((pressable && t.ms <= 160) || (dialog && t.ms <= 200))) ||
+          (day && COLOR_PROPS.includes(t.p) && t.ms <= 200) ||
+          (dialog && ["opacity", "display", "overlay"].includes(t.p) && t.ms <= 200);
+        const bad = props.filter((t) => !allowed(t));
+        if (animated || bad.length) {
+          const what = `${el.tagName.toLowerCase()}${el.hasAttribute("data-day") ? "[data-day]" : ""} «${(el.textContent ?? "").trim().slice(0, 30)}»`;
+          out.push(`${what}: ${animated ? `animation=${s.animationName} ` : ""}${bad.map((t) => `${t.p} ${t.ms}ms`).join(", ")}`);
+        }
+      }
+      return out;
+    },
+    { TRANSFORM, COLOR_PROPS },
+  );
+
+export type Recorded = { where: string; dd: number; inDialog: boolean; props: string[]; ms: number };
+
+/**
+ * Graba desde la carga, frame a frame, cada animación o transición que arranca (CSS o Web Animations): dónde (etiqueta
+ * y texto), en qué <dd> de su <dl> (−1 si no está en una), si está en un diálogo, qué propiedades mueve y cuánto dura
+ * en total. Así se ven también los movimientos más cortos que un `evaluate`. Llamar antes de abrir la página.
+ */
+export async function recordAnimations(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { e2eAnims: unknown[] };
+    w.e2eAnims = [];
+    const seen = new WeakSet<Animation>();
+    const kebab = (k: string) => (k.startsWith("--") ? k : k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`));
+    const tick = () => {
+      for (const a of document.getAnimations()) {
+        if (seen.has(a)) continue;
+        seen.add(a);
+        const effect = a.effect as KeyframeEffect | null;
+        const t = effect?.target;
+        if (!effect || !t || t.getRootNode() !== document || t.closest("nextjs-portal")) continue;
+        const props =
+          "transitionProperty" in a
+            ? [(a as CSSTransition).transitionProperty]
+            : [...new Set(effect.getKeyframes().flatMap((k) => Object.keys(k)))]
+                .filter((k) => !["offset", "computedOffset", "easing", "composite"].includes(k))
+                .map(kebab);
+        const dd = t.closest("dd");
+        const dl = t.closest("dl");
+        w.e2eAnims.push({
+          where: `${t.tagName.toLowerCase()} «${(t.textContent ?? "").trim().slice(0, 30)}»`,
+          dd: dd && dl ? [...dl.querySelectorAll("dd")].indexOf(dd) : -1,
+          inDialog: t.closest('dialog, [role="dialog"]') !== null,
+          props,
+          ms: Number(effect.getComputedTiming().activeDuration),
+        });
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  /** Devuelve lo grabado desde la última llamada y lo vacía. */
+  return () =>
+    page.evaluate(() => {
+      const w = window as unknown as { e2eAnims: Recorded[] };
+      return w.e2eAnims.splice(0);
+    });
+}
+
+/** El texto que se ve (sin el sr-only): cada nodo de texto con su caja. */
+export const visibleTexts = (target: Locator) =>
+  target.evaluate((root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const found: { text: string; top: number; bottom: number; left: number; right: number }[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = (n.textContent ?? "").trim();
+      const box = n.parentElement!.getBoundingClientRect();
+      if (!text || box.width <= 1 || box.height <= 1) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      const r = range.getBoundingClientRect();
+      found.push({ text, top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+    }
+    return found;
+  });

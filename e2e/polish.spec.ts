@@ -1,96 +1,44 @@
 import { expect, test as anonymous, type Locator, type Page } from "@playwright/test";
 import { addDays } from "../src/lib/dates";
 import {
+  COLORS,
+  EASE_OUT,
   GENERIC,
+  HUES,
   MADRID,
+  TRANSFORM,
   announced,
+  backdrop,
   button,
   cleanUp,
+  contrast,
   dayAt,
   dayButton,
   expectFitsMobile,
   expectNoSeriousA11yViolations,
   failServerActions,
+  families,
   field,
   heading,
   heatmap,
+  hue,
+  inHue,
   item,
   mark,
+  motionOutsideWhitelist,
+  moving,
   openApp,
+  paint,
   prefix,
   seed,
   test,
+  transitionsOf,
+  type Color,
 } from "./helpers";
 
 // T11: pulido visual. Solo lo que se puede medir de forma objetiva (estilos computados, cajas, peticiones y contraste
 // calculado). El juicio estético (capturas a 375, 768 y 1280 y `impeccable detect`) es del Orquestador.
-// Los colores se normalizan con un canvas: Chrome los da en oklch o lab y el canvas los pasa a sRGB y compone la
-// transparencia. El contraste se calcula con la fórmula de WCAG 2.x.
-
-type RGB = [number, number, number];
-const COLORS = ["red", "orange", "amber", "green", "blue", "violet"] as const;
-type Color = (typeof COLORS)[number];
-/** Tono (HSL) de cada color del hábito, con margen para el 600 y el 700 de Tailwind (red-700 ≈ 358°, amber-700 ≈ 25°…). */
-const HUES: Record<Color, [number, number]> = {
-  red: [345, 368],
-  orange: [8, 21],
-  amber: [21, 50],
-  green: [120, 170],
-  blue: [200, 245],
-  violet: [250, 290],
-};
-
-/** Pinta las capas (de abajo arriba) sobre blanco en un canvas y devuelve el sRGB resultante. */
-function paint(page: Page, layers: string[]): Promise<RGB> {
-  return page.evaluate((layers) => {
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (!ctx) throw new Error("sin canvas");
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, 1, 1);
-    for (const layer of layers) {
-      ctx.fillStyle = layer;
-      ctx.fillRect(0, 0, 1, 1);
-    }
-    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-    return [r, g, b] as [number, number, number];
-  }, layers);
-}
-
-/** Fondos de los ancestros del elemento, del <html> hacia abajo (sin el propio elemento si `own` es false). */
-const backdrop = (target: Locator, own = true) =>
-  target.evaluate((el, own) => {
-    const chain: string[] = [];
-    for (let n: Element | null = own ? el : el.parentElement; n; n = n.parentElement) {
-      chain.unshift(getComputedStyle(n).backgroundColor);
-    }
-    return chain;
-  }, own);
-
-const channel = (v: number) => {
-  const c = v / 255;
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-};
-const luminance = ([r, g, b]: RGB) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-const contrast = (a: RGB, b: RGB) => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-};
-const hue = ([r, g, b]: RGB) => {
-  const max = Math.max(r, g, b);
-  const d = max - Math.min(r, g, b);
-  if (d === 0) return NaN;
-  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return (h * 60 + 360) % 360;
-};
-const inHue = (rgb: RGB, color: Color) => {
-  const [lo, hi] = HUES[color];
-  const h = hue(rgb);
-  return (h >= lo && h <= hi) || (h + 360 >= lo && h + 360 <= hi);
-};
-
-/** La familia tipográfica normalizada para comparar nombres de familias (next/font puede añadir prefijos y sufijos). */
-const families = (target: Locator) =>
-  target.evaluate((el) => getComputedStyle(el).fontFamily.toLowerCase().replace(/[^a-z]/g, ""));
+// Las utilidades de color, tipografía y movimiento están en helpers.ts (las comparte card.spec, de T11b).
 
 /** Peticiones a Google Fonts durante la visita. */
 function watchGoogleFonts(page: Page) {
@@ -100,19 +48,6 @@ function watchGoogleFonts(page: Page) {
   });
   return hits;
 }
-
-/** Elementos (fuera del indicador de Next) con transición o animación, salvo los que cumplan `allowed`. */
-const moving = (page: Page, allowed: string) =>
-  page.evaluate((allowed) => {
-    const secs = (v: string) => Math.max(...v.split(",").map((s) => parseFloat(s) * (s.trim().endsWith("ms") ? 0.001 : 1)));
-    return [...document.querySelectorAll("body *")]
-      .filter((el) => !(allowed && el.matches(allowed)) && !el.closest("nextjs-portal"))
-      .filter((el) => {
-        const s = getComputedStyle(el);
-        return secs(s.transitionDuration) > 0 || (s.animationName !== "none" && secs(s.animationDuration) > 0);
-      })
-      .map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""} «${(el.textContent ?? "").trim().slice(0, 30)}» transition=${getComputedStyle(el).transitionDuration}`);
-  }, allowed);
 
 // ---------------------------------------------------------------- Páginas públicas (sin sesión, sin logins)
 
@@ -258,11 +193,19 @@ anonymous.describe("T11 · páginas públicas", () => {
     expect(caret.caret, "caret-color de la paleta (no el del texto, que es lo que da auto)").not.toBe(caret.color);
   });
 
-  anonymous("8 · en /, /login y /registro no se anima nada", async ({ page }) => {
+  // T11b amplía la regla de T11 (aprobado por el humano, tasks/todo.md): en reposo solo se permite la lista blanca
+  // (aquí, el feedback al pulsar los botones); con reduce, nada.
+  anonymous("8 · en /, /login y /registro solo se mueve la lista blanca de T11b (botones: transform ≤ 160 ms) y con reduce nada", async ({ page }) => {
     for (const path of ["/", "/login", "/registro"]) {
       await page.goto(path);
       await page.getByRole("heading", { level: 1 }).first().waitFor();
-      expect(await moving(page, ""), `${path}: elementos con transición o animación`).toEqual([]);
+      expect(await motionOutsideWhitelist(page), `${path}: movimiento fuera de la lista blanca`).toEqual([]);
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const path of ["/", "/login", "/registro"]) {
+      await page.goto(path);
+      await page.getByRole("heading", { level: 1 }).first().waitFor();
+      expect(await moving(page, ""), `${path} con reduce: elementos con transición o animación`).toEqual([]);
     }
   });
 
@@ -491,19 +434,20 @@ test.describe("T11 · /app", () => {
     }
   });
 
-  test("8 · movimiento: el botón de día tiene una transición de ≤ 200 ms sobre el relleno y nada más se anima en /app", async ({ page, api }) => {
+  // Reescrito en T11b como lista blanca (la regla de movimiento se amplía con permiso del humano, tasks/todo.md).
+  test("8 · movimiento: el relleno del día (background-color ≤ 200 ms con cubic-bezier(0.23, 1, 0.32, 1)) y en reposo nada fuera de la lista blanca de T11b", async ({ page, api }) => {
     const [name] = await seedColors(page, api, ["green"]);
     for (const tag of ["Hoy", "Ayer"]) {
-      const t = await dayButton(page, tag, name).evaluate((el) => {
-        const s = getComputedStyle(el);
-        return { property: s.transitionProperty, duration: s.transitionDuration };
-      });
-      const ms = t.duration.split(",").map((s) => parseFloat(s) * (s.trim().endsWith("ms") ? 1 : 1000));
-      expect(Math.max(...ms), `«${tag}»: transition-duration ${t.duration}`).toBeGreaterThan(0);
-      expect(Math.max(...ms), `«${tag}»: transition-duration ${t.duration}`).toBeLessThanOrEqual(200);
-      expect(t.property, `«${tag}»: la transición incluye el relleno`).toMatch(/\ball\b|background/);
+      const all = await transitionsOf(dayButton(page, tag, name));
+      const fill = all.find((t) => t.property === "background-color");
+      expect(fill, `«${tag}»: transición del relleno (background-color, no «all»): ${JSON.stringify(all)}`).toBeDefined();
+      expect(fill!.ms, `«${tag}»: duración del relleno`).toBeLessThanOrEqual(200);
+      expect(fill!.curve, `«${tag}»: curva del relleno`).toBe(EASE_OUT);
+      const press = all.filter((t) => TRANSFORM.includes(t.property));
+      expect(press.length, `«${tag}»: transición de transform para el feedback al pulsar: ${JSON.stringify(all)}`).toBeGreaterThan(0);
+      for (const t of press) expect(t.ms, `«${tag}»: ${t.property}`).toBeLessThanOrEqual(160);
     }
-    expect(await moving(page, "button[data-day]"), "otros elementos con transición o animación").toEqual([]);
+    expect(await motionOutsideWhitelist(page), "movimiento fuera de la lista blanca").toEqual([]);
   });
 
   test("8 · con prefers-reduced-motion: reduce, el botón de día no tiene transición ni animación", async ({ page, api }) => {

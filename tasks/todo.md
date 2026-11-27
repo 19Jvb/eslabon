@@ -112,7 +112,7 @@
   - Heredado de T06-r2: al renombrar un hábito ya borrado, el foco no pasa por `body` (unos 275 ms) antes de llegar al h1.
   - Heredado de T05-r2: si la acción falla con un 500, el formulario conserva el email escrito. Si cabe sin complicar, los formularios de auth también funcionan antes de que cargue el JS (mejora progresiva); si no, se documenta como limitación.
 
-- [ ] **T11b: Tarjeta del hábito: «Hoy» visible, jerarquía, mapa legible, cadena y movimiento** (M). Origen: crítica de impeccable (28/40, `.impeccable/critique/`, local) + emil-design-eng, con el alcance aprobado por el humano. Pule lo que ya existe; no añade funcionalidades.
+- [x] **T11b: Tarjeta del hábito: «Hoy» visible, jerarquía, mapa legible, cadena y movimiento** (M). Origen: crítica de impeccable (28/40, `.impeccable/critique/`, local) + emil-design-eng, con el alcance aprobado por el humano. Pule lo que ya existe; no añade funcionalidades.
   - **Hoy visible [P1]:** el botón de hoy muestra visible «Hoy» (en lugar de la inicial) encima del número, y el de ayer, «Ayer». Hoy, sin marcar, lleva un borde de 2 px o más y más oscuro que el resto (neutral-900). El nombre accesible no cambia («Hoy: <hábito>»).
   - **Jerarquía [P2]:** en la `<dl>` (misma estructura: 3 `<dt>` en el mismo orden y los mismos textos de valor), el valor de «Racha actual» va en `font-display`, con un tamaño de 1,5 veces o más el de los otros dos valores, y en el tono 700 del hábito (contraste ≥ 4.5:1). Los otros dos se quedan como están.
   - **Mapa legible [P2]:** celdas de 12 px (`size-3`) con 3 px de separación. Etiquetas de fila «L», «X» y «V» a la izquierda (`aria-hidden`, fuera de las 84 `[data-day]`). La celda de hoy lleva `data-today="true"` y un anillo visible. Pie mínimo, visible y `aria-hidden`: «Últimas 12 semanas» con una leyenda de cumplido, sin marcar y futuro. El nombre accesible del `role="img"` no cambia.
@@ -132,6 +132,7 @@
   - La vista previa imita la app: 7 días que terminan en «Hoy» (las iniciales de una semana fija, sin dígitos), la cadena dibujada entre los días consecutivos y el mapa con las etiquetas L/X/V. Sigue `aria-hidden` y estática.
   - Auth: el enlace del logo mide 44 px de alto o más; un separador visual «o» (`aria-hidden`) entre el botón principal y el botón demo.
   - Estado vacío: «Aún no tienes hábitos. Crea el primero en «Nuevo hábito».» (sin referencias de dirección).
+  - Heredado de T11b-r1 (S-2): la leyenda del mapa reutiliza `cellClass(…)` en lugar de repetir sus clases (una sola fuente, D-15).
   - Heredado de T11b-r1: feedback al pulsar (`active:scale-[0.97]`, transform ≤ 160 ms, motion-safe) también en los botones de icono Renombrar y Borrar, por coherencia.
   - Fuera de alcance, documentado: título en el diálogo de borrar (cambiaría su nombre accesible, fijado en T06), «Cerrar sesión» → / (T05 fija /login), separar más naranja y ámbar (el contraste mínimo de 3:1 lo limita).
 

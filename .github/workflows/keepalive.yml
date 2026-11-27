@@ -1,0 +1,57 @@
+name: Keep-alive Supabase
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Login, lectura de habits y logout del usuario E2E
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          for name in SUPABASE_URL SUPABASE_PUBLISHABLE_KEY E2E_USER_EMAIL E2E_USER_PASSWORD; do
+            [ -n "${!name}" ] || fail "Falta el secret $name"
+          done
+          base="${SUPABASE_URL%/}"
+          body="$(mktemp)"
+          trap 'rm -f "$body"' EXIT
+
+          code="$(jq -n --arg email "$E2E_USER_EMAIL" --arg password "$E2E_USER_PASSWORD" '{email: $email, password: $password}' |
+            curl -sS --max-time 30 -o "$body" -w '%{http_code}' -X POST \
+              "$base/auth/v1/token?grant_type=password" \
+              -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+              -H "Content-Type: application/json" \
+              --data-binary @-)" || fail "Login: no se pudo conectar con Supabase"
+          [ "$code" = "200" ] || fail "Login: se esperaba 200 y llegó $code"
+          token="$(jq -r '.access_token // empty' "$body")"
+          : > "$body"
+          [ -n "$token" ] || fail "Login: la respuesta no trae access_token"
+          echo "::add-mask::$token"
+
+          code="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+            "$base/rest/v1/habits?select=id&limit=1" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $token")" || fail "Lectura de habits: no se pudo conectar con Supabase"
+          [ "$code" = "200" ] || fail "Lectura de habits: se esperaba 200 y llegó $code"
+
+          code="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST \
+            "$base/auth/v1/logout?scope=local" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $token")" || fail "Logout: no se pudo conectar con Supabase"
+          [ "$code" = "204" ] || fail "Logout: se esperaba 204 y llegó $code"
+
+          echo "Keep-alive correcto: login 200, habits 200, logout 204"

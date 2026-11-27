@@ -149,7 +149,9 @@
   - Aceptación: repo público `19Jvb/eslabon` con el CI en verde. Producción con las variables en Vercel y Deployment Protection desactivada.
   - Verificar: `curl -sI <prod>` sin cookies → 200 (no 401 ni redirección a vercel.com), y la ventana de incógnito del humano abre la app.
 - [ ] **T13: Keep-alive de Supabase** (XS) · manual: secrets de GitHub
-  - Aceptación: un workflow programado (cada 3 días, más `workflow_dispatch`) que hace una consulta ligera con la publishable key.
+  - Aceptación: `.github/workflows/keepalive.yml`, programado (`cron` cada 3 días) y con `workflow_dispatch`. Hace actividad REAL en la BD, la misma que un usuario: (1) login del usuario E2E con la API de Auth (`/auth/v1/token?grant_type=password`), (2) `GET /rest/v1/habits?select=id&limit=1` con su token → 200, (3) logout `scope=local`. Si cualquier paso no da el código esperado, el job FALLA (GitHub avisa al dueño por email). Secrets de GitHub (nunca en el repo): `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `E2E_USER_EMAIL` y `E2E_USER_PASSWORD`. Sin imprimir ningún secreto ni token en el log (`::add-mask::` para el token). Permisos `contents: read` y `timeout-minutes`.
+  - Heredado de T02-r1: `ci.yml` con `timeout-minutes` y `push` limitado a `main` (los PR siguen con `pull_request`).
+  - Paso del Orquestador tras la aprobación: crear los 4 secrets por la API de GitHub (cifrados con la clave pública del repo, sin mostrar los valores), lanzar el workflow con `workflow_dispatch` y comprobar que sale en verde.
   - Verificar: lanzado a mano, sale en verde.
 - [ ] **T14: E2E contra producción**
   - Verificar: `BASE_URL=<prod> npm run e2e` en verde, incluido el aislamiento RLS. Informe de Testing.

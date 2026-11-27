@@ -144,7 +144,7 @@
 ### Checkpoint C: flujo completo en local; el humano lo prueba
 
 ## Fase 4: Publicación
-- [ ] **T12: Repo en GitHub y despliegue en Vercel** · manual guiado
+- [x] **T12: Repo en GitHub y despliegue en Vercel** · manual guiado
   - Heredado de T04-r3: declarar en `supabase/config.jsonc` el `site_url` de producción y `additional_redirect_urls` (producción + localhost). Antes del `config push`, repetir `config diff` y confirmar que solo hay `update` declarados y esperados. Región de las funciones de Vercel: `fra1` (Supabase está en eu-central-1).
   - Aceptación: repo público `19Jvb/eslabon` con el CI en verde. Producción con las variables en Vercel y Deployment Protection desactivada.
   - Verificar: `curl -sI <prod>` sin cookies → 200 (no 401 ni redirección a vercel.com), y la ventana de incógnito del humano abre la app.

@@ -3,7 +3,8 @@
   // Minimal on purpose: what is not declared here is not touched in production by `config push`.
   "project_id": "eslabon",
   "auth": {
-    "site_url": "http://localhost:3000",
+    "site_url": "https://eslabon-theta.vercel.app",
+    "additional_redirect_urls": ["https://eslabon-theta.vercel.app", "http://localhost:3000"],
     "enable_signup": true,
     "minimum_password_length": 8,
     "email": {

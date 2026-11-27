@@ -132,6 +132,7 @@
   - La vista previa imita la app: 7 días que terminan en «Hoy» (las iniciales de una semana fija, sin dígitos), la cadena dibujada entre los días consecutivos y el mapa con las etiquetas L/X/V. Sigue `aria-hidden` y estática.
   - Auth: el enlace del logo mide 44 px de alto o más; un separador visual «o» (`aria-hidden`) entre el botón principal y el botón demo.
   - Estado vacío: «Aún no tienes hábitos. Crea el primero en «Nuevo hábito».» (sin referencias de dirección).
+  - Heredado de T11b-r1: feedback al pulsar (`active:scale-[0.97]`, transform ≤ 160 ms, motion-safe) también en los botones de icono Renombrar y Borrar, por coherencia.
   - Fuera de alcance, documentado: título en el diálogo de borrar (cambiaría su nombre accesible, fijado en T06), «Cerrar sesión» → / (T05 fija /login), separar más naranja y ámbar (el contraste mínimo de 3:1 lo limita).
 
 ### Checkpoint C: flujo completo en local; el humano lo prueba

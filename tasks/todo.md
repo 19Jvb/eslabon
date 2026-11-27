@@ -176,6 +176,16 @@
 
 - [x] **T17: Migración de Telegram (revisión del SQL en dos fases, como en T09):** las tablas `telegram_links` (user_id pk, chat_id único, tz, linked_at; RLS: el dueño puede select y delete) y `private.telegram_link_codes`; el secreto en `private`; las RPC `create_telegram_link_code(p_tz)` (authenticated) y `telegram_link`, `telegram_unlink`, `telegram_today` y `telegram_set_checkin` (anon, con `p_secret`). Insert idempotente. Ventana de días como la app.
 - [ ] **T18: Vincular desde /app (UI, la aceptación va primero):** una sección «Telegram» con el estado (vinculado o no), «Vincular con Telegram» (genera el código y muestra el enlace profundo, el código y la caducidad) y «Desvincular». Server Actions con zod, getUser y el genérico.
+  - Contrato de la interfaz (debajo de la lista de hábitos, antes de «Nuevo hábito»): sección con h2 «Telegram».
+    - **Sin vincular:** el texto «Marca tus hábitos de hoy desde Telegram.» y el botón «Vincular con Telegram». Al pulsarlo (Server Action: getUser + RPC `create_telegram_link_code` con el tz de la cookie) aparecen:
+      - un enlace «Abrir Telegram» con `href="https://t.me/<TELEGRAM_BOT_USERNAME>?start=<CÓDIGO>"`, `target="_blank"` y `rel="noopener noreferrer"`;
+      - el código visible, de 8 caracteres, con la etiqueta «Código»;
+      - el texto «Caduca en 10 minutos. También puedes enviar /vincular <CÓDIGO> al bot.»;
+      - el botón «Comprobar vinculación», que vuelve a leer el estado.
+      - Volver a pulsar «Vincular con Telegram» genera otro código y el anterior deja de valer.
+    - **Vinculado:** el texto «Vinculado con Telegram desde el <fecha>» (fecha `es-ES` larga, en la zona del usuario) y el botón «Desvincular». Al desvincular (getUser + `delete().eq("user_id")`, sin pedir chat_id), vuelve al estado sin vincular.
+    - `TELEGRAM_BOT_USERNAME` (servidor; se añade a `.env.example`) da el usuario del bot. Si falta, la sección dice «Telegram no está disponible ahora mismo.» sin romper la página.
+    - D-05 (zod + getUser + el genérico, también ante un cuerpo que no es el esperado), D-10 (un 500 → el genérico y la UI estable; doble clic → un solo código), D-11 (axe y teclado) y D-12 (375 px, 44×44).
   - Heredado de T17-r1 (Testing, su territorio): `npm run e2e` en local tiene que salir ENTERO en verde. Hoy cache.spec falla contra `next dev` (en dev no hay `private`). Que el webServer de Playwright use un build de producción (`next build && next start`) cuando no hay BASE_URL, o una solución equivalente que no debilite el test.
   - Heredado de T17-r2: con el grant por columnas, la app pide columnas concretas (`select("user_id, linked_at")`), nunca `select("*")`; desvincular con `delete().eq("user_id", …)` sin returning de todas las columnas (si no, da 42501).
   - Heredado de T17-r1a para T19: normalizar el código (mayúsculas, sin espacios) antes de la RPC; aceptar solo `chat.type === 'private'`; limitar los `/vincular` fallidos por chat; al vincular, avisar en el chat de que la cuenta ha quedado vinculada (contra la ingeniería social). Para T20: no guardar el secreto en snippets del SQL Editor y no vincular nunca la cuenta demo con una cuenta personal de Telegram.

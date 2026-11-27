@@ -110,7 +110,9 @@ anonymous.describe("T11 · páginas públicas", () => {
 
   // Actualizado en T11c (criterio nuevo, aprobado por el humano en tasks/todo.md): la fila ya no es «LMXJVSD», sino 7 días
   // que terminan en «Hoy» (las iniciales de una semana fija, sin dígitos). La cadena y el mapa L/X/V, en details.spec.
-  anonymous("5 · landing: vista previa estática de «Leer 20 minutos» con 7 días que terminan en «Hoy» (iniciales consecutivas de una semana fija), sin fechas ni controles, oculta (aria-hidden) o role=img con otro nombre", async ({ page }) => {
+  // Actualizado en T11d (criterio nuevo): la vista previa lleva las estadísticas y el aviso de hoy pendiente, con cifras.
+  // Los únicos dígitos permitidos son los de su <dl> y los del aviso («Marca hoy para…»); los días de la fila, sin dígitos.
+  anonymous("5 · landing: vista previa estática de «Leer 20 minutos» con 7 días que terminan en «Hoy» (iniciales consecutivas de una semana fija), sin fechas ni controles (dígitos solo en la <dl> y en el aviso), oculta (aria-hidden) o role=img con otro nombre", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("img", { name: /^Historial de 12 semanas de/ }), "la vista previa no se anuncia como un mapa real").toHaveCount(0);
     const previews = await page.evaluate(() =>
@@ -120,7 +122,15 @@ anonymous.describe("T11 · páginas públicas", () => {
           role: el.getAttribute("role"),
           hidden: el.getAttribute("aria-hidden"),
           label: el.getAttribute("aria-label") ?? "",
-          text: (el.textContent ?? "").replace(/\s+/g, ""),
+          // Sin la <dl> ni el aviso de hoy pendiente (T11d): lo que queda no lleva dígitos.
+          text: (() => {
+            const copy = el.cloneNode(true) as Element;
+            copy.querySelectorAll("dl").forEach((dl) => dl.remove());
+            [...copy.querySelectorAll("*")]
+              .filter((n) => /^Marca hoy para (llegar a \d+ días|empezar tu cadena)$/.test((n.textContent ?? "").replace(/\s+/g, " ").trim()))
+              .forEach((n) => n.remove());
+            return (copy.textContent ?? "").replace(/\s+/g, "");
+          })(),
           controls: el.querySelectorAll("button, a, input, select, textarea, [tabindex]").length,
           cells: el.querySelectorAll("*").length,
         })),
@@ -132,7 +142,7 @@ anonymous.describe("T11 · páginas públicas", () => {
       expect(preview.label.trim().length, "role=img con nombre").toBeGreaterThan(0);
     }
     const rest = preview.text.replace("Leer20minutos", "");
-    expect(rest, "sin fechas (página estática)").not.toMatch(/\d/);
+    expect(rest, "sin fechas fuera de la <dl> y del aviso (página estática)").not.toMatch(/\d/);
     const row = (await readPreview(page))!.row.map((d) => d.text);
     expect(row, "una fila de 7 días en una línea que termina en «Hoy»").toHaveLength(7);
     expect(row[6], "el último día es «Hoy»").toBe("Hoy");

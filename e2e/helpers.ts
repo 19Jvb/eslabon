@@ -594,6 +594,9 @@ export const visibleTexts = (target: Locator) =>
  * - `links`: conectores, elementos reales (no pseudoelementos) sin texto, que se ven, cuyo centro cae entre los centros
  *   de dos días contiguos y dentro de su alto, no más anchos que la distancia entre esos centros y con fondo, borde o SVG.
  * - `labels`: textos L, X y V fuera de la fila de días, con cuántas celdas vacías pequeñas (6–20 px) tienen a su derecha.
+ * - T11d: `days` (la caja pintada de cada día de la fila, con sus 4 radios y su relleno en sRGB), `bands` (la caja y el
+ *   relleno de cada conector de `links`) y `map` (las celdas del mapa: el grupo más grande de hermanos sin texto, pintados
+ *   y de 6–20 px, con su centro y si están rellenas).
  */
 export const readPreview = (page: Page) =>
   page.evaluate(() => {
@@ -638,8 +641,10 @@ export const readPreview = (page: Page) =>
           if (painted(n)) cell = n;
         }
         const r = cell.getBoundingClientRect();
-        const fill = onWhite(getComputedStyle(cell).backgroundColor);
-        return { el: cell, text: own(el), left: r.left, right: r.right, top: r.top, bottom: r.bottom, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, filled: fill.some((c) => c < 235) };
+        const s = getComputedStyle(cell);
+        const fill = onWhite(s.backgroundColor);
+        const radii = [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomRightRadius, s.borderBottomLeftRadius].map(parseFloat);
+        return { el: cell, text: own(el), left: r.left, right: r.right, top: r.top, bottom: r.bottom, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, filled: fill.some((c) => c < 235), fill, radii };
       });
     const rows: (typeof days)[] = [];
     for (const d of days) {
@@ -657,15 +662,24 @@ export const readPreview = (page: Page) =>
         const cy = (r.top + r.bottom) / 2;
         const i = row.findIndex((d, k) => k < row.length - 1 && d.cx < cx && cx < row[k + 1].cx);
         if (i < 0 || cy < row[i].top || cy > row[i].bottom || r.width > row[i + 1].cx - row[i].cx + 1) return [];
-        return [i];
+        return [{ i, left: r.left, right: r.right, top: r.top, bottom: r.bottom, fill: onWhite(getComputedStyle(el).backgroundColor) }];
       });
 
     const rowTop = Math.min(...row.map((d) => d.top));
     const rowBottom = Math.max(...row.map((d) => d.bottom));
-    const small = all.filter((el) => {
+    const isSmall = (el: Element) => {
       const r = el.getBoundingClientRect();
       return text(el) === "" && r.width >= 6 && r.width <= 20 && r.height >= 6 && r.height <= 20;
-    });
+    };
+    const small = all.filter(isSmall);
+    const parents = [...new Set(small.filter(painted).map((el) => el.parentElement!))];
+    const grid = parents.sort((a, b) => [...b.children].filter((c) => isSmall(c) && painted(c)).length - [...a.children].filter((c) => isSmall(c) && painted(c)).length)[0];
+    const map = grid
+      ? [...grid.children].filter((c) => seen(c) && isSmall(c) && painted(c)).map((c) => {
+          const r = c.getBoundingClientRect();
+          return { cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, done: onWhite(getComputedStyle(c).backgroundColor).some((v) => v < 235) };
+        })
+      : [];
     const labels = all
       .filter((el) => ["L", "X", "V"].includes(own(el)))
       .map((el) => {
@@ -681,7 +695,65 @@ export const readPreview = (page: Page) =>
 
     return {
       row: row.map((d) => ({ text: d.text, filled: d.filled })),
-      links: [...new Set(links)].sort((a, b) => a - b),
+      links: [...new Set(links.map((l) => l.i))].sort((a, b) => a - b),
       labels,
+      days: row.map((d) => ({ label: d.text, left: d.left, right: d.right, top: d.top, bottom: d.bottom, radii: d.radii, fill: d.fill as RGB })),
+      bands: links.map(({ left, right, top, bottom, fill }) => ({ left, right, top, bottom, fill: fill as RGB })),
+      map,
     };
   });
+
+// ---------- La cadena como banda continua (T11d) ----------
+
+type Box = { left: number; right: number; top: number; bottom: number };
+export type ChainDay = Box & { label: string; radii: number[]; fill: RGB };
+export type ChainBand = Box & { fill: RGB };
+
+/**
+ * Lo que falla en una fila de días frente a cuáles deben ir unidos (`linked[i]`: el día i con el i+1). Unidos: un solo
+ * conector entre los dos, de alto ≥ 80 % del botón y sin salirse de él, tocando los dos (±1 px; puede montarse) y con el
+ * mismo relleno que ambos (±3 por canal). Esquinas: las interiores de una unión a 0 y el resto como las de un día suelto
+ * (> 0). Sin unir: ningún conector. Devuelve una línea por fallo (vacío = bien).
+ */
+export function chainProblems(days: ChainDay[], bands: ChainBand[], linked: boolean[]) {
+  const out: string[] = [];
+  const cx = (b: Box) => (b.left + b.right) / 2;
+  const cy = (b: Box) => (b.top + b.bottom) / 2;
+  const far = (a: RGB, b: RGB) => a.some((v, k) => Math.abs(v - b[k]) > 3);
+  for (let i = 0; i < days.length - 1; i++) {
+    const [a, b] = [days[i], days[i + 1]];
+    const name = `${a.label}→${b.label}`;
+    const here = bands.filter((x) => cx(x) > cx(a) && cx(x) < cx(b) && cy(x) >= Math.min(a.top, b.top) && cy(x) <= Math.max(a.bottom, b.bottom));
+    if (!linked[i]) {
+      if (here.length) out.push(`${name}: sin unir, pero hay ${here.length} conector(es)`);
+      continue;
+    }
+    if (here.length !== 1) {
+      out.push(`${name}: ${here.length} conectores visibles (se espera 1)`);
+      continue;
+    }
+    const band = here[0];
+    const h = a.bottom - a.top;
+    const bh = band.bottom - band.top;
+    if (bh < 0.8 * h) out.push(`${name}: el conector mide ${bh.toFixed(1)} px de alto, < 80 % de ${h.toFixed(1)} px`);
+    if (band.top < a.top - 1 || band.bottom > a.bottom + 1) out.push(`${name}: el conector se sale del alto del botón`);
+    if (band.left > a.right + 1 || band.right < b.left - 1) {
+      out.push(`${name}: el conector no toca los dos días (huecos de ${(band.left - a.right).toFixed(1)} y ${(b.left - band.right).toFixed(1)} px)`);
+    }
+    if (far(band.fill, a.fill) || far(band.fill, b.fill)) out.push(`${name}: relleno del conector ${band.fill} ≠ el de los días ${a.fill} y ${b.fill}`);
+  }
+  const n = days.length;
+  const left0 = (k: number) => k > 0 && linked[k - 1];
+  const right0 = (k: number) => k < n - 1 && linked[k];
+  const free = days.filter((_, k) => !left0(k) && !right0(k));
+  const ref = free[0]?.radii[0];
+  if (!(ref > 0)) out.push(`no hay un día suelto con las esquinas redondeadas con el que comparar (radio ${ref})`);
+  const corners = ["arriba-izquierda", "arriba-derecha", "abajo-derecha", "abajo-izquierda"];
+  days.forEach((d, k) => {
+    const want = [left0(k) ? 0 : ref, right0(k) ? 0 : ref, right0(k) ? 0 : ref, left0(k) ? 0 : ref];
+    d.radii.forEach((r, j) => {
+      if (!(Math.abs(r - want[j]) <= 0.5)) out.push(`${d.label}: esquina ${corners[j]} de ${r} px (se espera ${want[j]} px)`);
+    });
+  });
+  return out;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
+import { bestStreak, completionRate, currentStreak, heatmapWeeks, todayNudge } from "@/lib/streak";
 
 describe("currentStreak", () => {
   it("vale 0 con el conjunto vacío", () => {
@@ -179,5 +179,21 @@ describe("heatmapWeeks", () => {
     expect(flat).toContain("2026-10-25");
     expect(flat).toContain("2026-10-26");
     expect(new Set(flat).size).toBe(84);
+  });
+});
+
+describe("todayNudge", () => {
+  it("con hoy marcado no hay aviso", () => {
+    expect(todayNudge(0, true)).toBeNull();
+    expect(todayNudge(5, true)).toBeNull();
+  });
+
+  it("con racha 0 invita a empezar la cadena", () => {
+    expect(todayNudge(0, false)).toBe("Marca hoy para empezar tu cadena");
+  });
+
+  it("con racha viva dice a cuántos días llega (racha + 1)", () => {
+    expect(todayNudge(1, false)).toBe("Marca hoy para llegar a 2 días");
+    expect(todayNudge(12, false)).toBe("Marca hoy para llegar a 13 días");
   });
 });

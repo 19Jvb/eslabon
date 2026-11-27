@@ -46,3 +46,9 @@ export function heatmapWeeks(days: Iterable<Day>, today: Day, weeks = 12): Heatm
     }),
   );
 }
+
+// The nudge under the stats while today is still unmarked: what marking it would do to the streak.
+export function todayNudge(streak: number, todayDone: boolean): string | null {
+  if (todayDone) return null;
+  return streak === 0 ? "Marca hoy para empezar tu cadena" : `Marca hoy para llegar a ${streak + 1} días`;
+}

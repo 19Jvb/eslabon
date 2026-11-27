@@ -4,7 +4,6 @@ import {
   createContext,
   Fragment,
   type ReactNode,
-  type RefObject,
   startTransition,
   use,
   useActionState,
@@ -14,12 +13,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { cellClass, ChainLink, HeatmapRowLabels } from "@/app/habit-look";
+import { cellClass, ChainLink, dayCount, HabitStats, HeatmapRowLabels, joinedCorners } from "@/app/habit-look";
 import { Spinner } from "@/app/spinner";
 import { buttonBase, focusRing, inputClass, pressable } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, habitColor } from "@/lib/habits";
-import { bestStreak, completionRate, currentStreak, heatmapWeeks } from "@/lib/streak";
+import { currentStreak, heatmapWeeks } from "@/lib/streak";
 import { withFallback } from "@/lib/with-fallback";
 import { createHabit, deleteHabit, loadSampleData, renameHabit, setCheckIn } from "./actions";
 
@@ -229,48 +228,6 @@ function RenameForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
   );
 }
 
-const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
-
-// Both computed from the same optimistic days as the buttons, so they change (and roll back) together.
-// The current streak leads: display face, larger and in the habit's 700.
-function HabitStats({
-  marked,
-  today,
-  color,
-  streakRef,
-}: {
-  marked: string[];
-  today: string;
-  color: string;
-  streakRef: RefObject<HTMLElement | null>;
-}) {
-  const stats = [
-    ["Racha actual", dayCount(currentStreak(marked, today))],
-    ["Mejor racha", dayCount(bestStreak(marked))],
-    ["Últimos 30 días", `${completionRate(marked, today)}\u00a0%`],
-  ];
-
-  return (
-    <dl className="grid grid-cols-3 gap-2 sm:gap-4">
-      {stats.map(([term, value], i) => (
-        <div key={term}>
-          <dt className="text-xs text-neutral-600">{term}</dt>
-          {i === 0 ? (
-            <dd
-              ref={streakRef}
-              className={`origin-left font-display text-2xl leading-tight font-semibold tabular-nums ${habitColor(color).streak}`}
-            >
-              {value}
-            </dd>
-          ) : (
-            <dd className="font-semibold text-neutral-900 tabular-nums">{value}</dd>
-          )}
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 function Heatmap({ habit, marked, today }: { habit: Habit; marked: string[]; today: string }) {
   const cells = heatmapWeeks(marked, today).flat();
   const done = cells.filter((cell) => cell.done).length;
@@ -379,6 +336,7 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
         <div className="flex items-center">
           {days.map(({ day, label, initial, date }, i) => {
             const linked = i > 0 && shown.includes(day) && shown.includes(days[i - 1].day);
+            const linkedRight = i < days.length - 1 && shown.includes(day) && shown.includes(days[i + 1].day);
             return (
               <Fragment key={day}>
                 {i > 0 && <ChainLink linked={linked} color={habit.color} />}
@@ -387,7 +345,7 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
                   data-day={day}
                   aria-pressed={shown.includes(day)}
                   onClick={() => toggle(day)}
-                  className={`flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${day === today ? "border-2 border-neutral-900" : "border border-neutral-500"} ${color.pressed} ${focusRing}`}
+                  className={`flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${day === today ? "border-2 border-neutral-900" : "border border-neutral-500"} ${joinedCorners(linked, linkedRight)} ${color.pressed} ${focusRing}`}
                 >
                   {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
                       does not contain the visible «J 26». Today and yesterday say so instead of an initial. */}

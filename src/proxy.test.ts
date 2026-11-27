@@ -21,4 +21,7 @@ describe("proxy matcher", () => {
     "skips static file %s",
     (path) => expect(runsProxy(path)).toBe(false),
   );
+
+  // Telegram calls the webhook without cookies: there is no session to refresh.
+  it("skips the Telegram webhook", () => expect(runsProxy("/api/telegram/webhook")).toBe(false));
 });

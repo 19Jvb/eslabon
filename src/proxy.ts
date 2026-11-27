@@ -56,6 +56,7 @@ function redirectWithSession(
   return redirect;
 }
 
+// Static files and the Telegram webhook (no cookies, no session) skip the proxy.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|api/telegram/|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

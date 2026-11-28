@@ -49,6 +49,9 @@ import {
 
 const RANGE = "Solo puedes marcar días desde el 1 de enero de 2000 hasta hoy.";
 const NOT_FOUND = "No encontramos ese hábito.";
+// T23 (heredado de T22-r1): el 404 general y el aviso del hábito borrado.
+const PAGE_NOT_FOUND = "No encontramos esta página.";
+const GONE = "Ese hábito ya no existe.";
 const NO_SESSION = { cookies: [], origins: [] };
 const WEEK = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -207,6 +210,28 @@ test.describe("el enlace «Historial» de la tarjeta", () => {
     await item(page, names[1]).getByRole("link", { name: `Ver el historial de ${names[1]}`, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/app/habitos/${ids[1]}$`));
     await expect(h1(page, names[1])).toBeVisible();
+  });
+
+  test("S-1 (T23): sin prefetch: cargar /app con 3 hábitos y ver todos sus enlaces «Historial» no pide nada a /app/habitos/*; al pulsar uno, navega a su página", async ({ page, api }) => {
+    const p = prefix();
+    const names = [`${p}-a`, `${p}-b`, `${p}-c`];
+    const ids = await seed(api, ...names.map((name) => ({ name })));
+    const asked: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname.startsWith("/app/habitos/")) asked.push(`${r.method()} ${r.url()}`);
+    });
+    await openApp(page);
+    // Cada enlace entra en el viewport (lo que dispara el prefetch de Next), sin pasar el ratón por encima.
+    for (const name of names) {
+      await item(page, name).getByRole("link", { name: `Ver el historial de ${name}`, exact: true }).scrollIntoViewIfNeeded();
+    }
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(3000);
+    expect(asked, "peticiones a /app/habitos/* antes de pulsar ningún enlace").toEqual([]);
+
+    await item(page, names[0]).getByRole("link", { name: `Ver el historial de ${names[0]}`, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/habitos/${ids[0]}$`));
+    await expect(h1(page, names[0])).toBeVisible();
   });
 });
 
@@ -477,6 +502,23 @@ test.describe("marcar desde el historial", () => {
     }
     expect(await marked(api, id)).toEqual([]);
   });
+
+  test("S-3 (T23): si el hábito ya no existe al marcar un día desde su historial (borrado por la API en medio) → «Ese hábito ya no existe.» en role=alert y un enlace «Tus hábitos» → /app", async ({ page, api }) => {
+    const { name, id, today, previous } = await seedHabit(api);
+    await openHistory(page, id, name, previous);
+    await expect(link(page, "Tus hábitos"), "antes del error no hay enlace «Tus hábitos»").toHaveCount(0);
+    const { error } = await api.from("habits").delete().eq("id", id);
+    expect(error).toBeNull();
+
+    await dayIn(page, previous, 5, today).click();
+    await expect(alert(page, GONE)).toBeVisible();
+    const back = link(page, "Tus hábitos");
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", "/app");
+    await back.click();
+    await expect(page).toHaveURL(/\/app\/?$/);
+    await expect(item(page, name), "el hábito borrado no está en la lista").toHaveCount(0);
+  });
 });
 
 // ---------------------------------------------------------------- 404, sesión y caché
@@ -500,6 +542,27 @@ test.describe("404, sesión y caché", () => {
       await expect(page).toHaveURL(/\/app\/?$/);
     } finally {
       await cleanUp(other);
+    }
+  });
+
+  test("S-2 (T23): una ruta que no existe (/no-existe, con sesión y sin ella) → 404 con «No encontramos esta página.», la marca «Eslabón» y «Ir al inicio» → /", async ({ page, browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, storageState: NO_SESSION });
+    try {
+      for (const [who, target] of [
+        ["con sesión", page],
+        ["sin sesión", await context.newPage()],
+      ] as const) {
+        const response = await target.goto("/no-existe");
+        expect(response?.status(), `${who}: estado HTTP`).toBe(404);
+        await expect(target.getByText(PAGE_NOT_FOUND, { exact: true }), who).toBeVisible();
+        await expect(target.getByText("Eslabón", { exact: true }).first(), `${who}: la marca`).toBeVisible();
+        const home = link(target, "Ir al inicio");
+        await expect(home, who).toHaveAttribute("href", "/");
+        await home.click();
+        await expect(target, who).toHaveURL(/^[^?#]*:\/\/[^/]+\/$/);
+      }
+    } finally {
+      await context.close();
     }
   });
 
@@ -570,6 +633,24 @@ test.describe("accesibilidad y móvil", () => {
     await page.goto(historyUrl(crypto.randomUUID()));
     await expect(page.getByText(NOT_FOUND, { exact: true })).toBeVisible();
     await expectNoSeriousA11yViolations(page);
+  });
+
+  test("D-11 y D-12 en el 404 general (T23): axe sin serious ni critical; «Ir al inicio» con Tab y Enter (foco visible) lleva a /; a 375×812 sin scroll horizontal y «Ir al inicio» ≥ 44×44", async ({ page }) => {
+    await page.goto("/no-existe");
+    await expect(page.getByText(PAGE_NOT_FOUND, { exact: true })).toBeVisible();
+    await expectNoSeriousA11yViolations(page);
+    await tabTo(page, link(page, "Ir al inicio"));
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/^[^?#]*:\/\/[^/]+\/$/);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/no-existe");
+    await expect(page.getByText(PAGE_NOT_FOUND, { exact: true })).toBeVisible();
+    await expectFitsMobile(page, []);
+    const box = await link(page, "Ir al inicio").boundingBox();
+    expect(box, "«Ir al inicio» visible").not.toBeNull();
+    expect(box!.width, "ancho de «Ir al inicio»").toBeGreaterThanOrEqual(44);
+    expect(box!.height, "alto de «Ir al inicio»").toBeGreaterThanOrEqual(44);
   });
 
   test("D-11: solo con teclado: «Mes anterior» con Enter, marcar el día 1 con Espacio y desmarcarlo con Enter (foco visible y sin perderlo) y «Volver a tus hábitos» con Enter", async ({ page, api }) => {

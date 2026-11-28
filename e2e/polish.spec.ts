@@ -401,7 +401,9 @@ test.describe("T11 · /app", () => {
 
   test("4 · a 375×812: «Renombrar» y «Borrar» son botones de icono (solo un SVG aria-hidden, sin texto), de 44×44, con title igual a su nombre, y un nombre de ~20 caracteres cabe en una línea", async ({ page, api }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    const name = `${prefix()} beber`;
+    // Nombre fijo (T23-r1): con `${prefix()} beber` el ancho dependía de las cifras del timestamp (de 160 a 220 px
+    // frente a los 201 px del hueco) y el test fallaba al azar. El afterEach borra los «e2e-%».
+    const name = "e2e-beber agua diaria";
     expect(name.length).toBeLessThanOrEqual(24);
     await seed(api, { name, color: "amber" });
     await openApp(page);

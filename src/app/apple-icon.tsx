@@ -1,0 +1,9 @@
+import { appIcon } from "@/app/app-icon";
+
+export const size = { width: 180, height: 180 };
+export const contentType = "image/png";
+
+// iOS rounds the corners itself and turns transparency black: the full square.
+export default function AppleIcon() {
+  return appIcon(size.width, "square");
+}

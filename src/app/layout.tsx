@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import type { ReactNode } from "react";
+import { BRAND_COLOR } from "@/app/brand-glyph";
 import "./globals.css";
 
 // Self-hosted at build time by next/font: no request to Google at runtime.
@@ -11,6 +12,9 @@ export const metadata: Metadata = {
   title: { default: "Eslabón", template: "%s · Eslabón" },
   description: "Crea hábitos diarios, márcalos cada día y no rompas la cadena.",
 };
+
+// The browser bar of the installed app, the same colour as the manifest's theme_color.
+export const viewport: Viewport = { themeColor: BRAND_COLOR };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

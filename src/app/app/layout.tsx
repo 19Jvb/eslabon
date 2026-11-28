@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
-import { BrandGlyph } from "@/app/brand-glyph";
+import { BrandName } from "@/app/brand-glyph";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutForm } from "./sign-out-form";
 import { TimeZoneCookie } from "./time-zone-cookie";
@@ -12,10 +12,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex flex-1 flex-col bg-neutral-50">
       <header className="border-b border-neutral-200 bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-3 py-3 sm:px-4">
-          <span className="inline-flex items-center gap-2 font-display text-lg font-bold text-emerald-800">
-            <BrandGlyph />
-            Eslabón
-          </span>
+          <BrandName />
           <Suspense fallback={<span className="text-sm text-neutral-600">Cargando…</span>}>
             <Account />
           </Suspense>

@@ -452,8 +452,9 @@ export function HabitItem({ habit, days, marked }: { habit: Habit; days: WeekDay
         )}
       </div>
       <DayButtons habit={habit} days={days} marked={marked} />
-      {/* Below the map, not beside the name: on a phone the name keeps the row's width. */}
-      <Link href={`/app/habitos/${habit.id}`} aria-label={`Ver el historial de ${habit.name}`} className={`${secondaryButton} self-start`}>
+      {/* Below the map, not beside the name: on a phone the name keeps the row's width. No prefetch: each one would
+          cost the proxy's habit lookup, for every card on screen. */}
+      <Link href={`/app/habitos/${habit.id}`} prefetch={false} aria-label={`Ver el historial de ${habit.name}`} className={`${secondaryButton} self-start`}>
         Historial
       </Link>
       <dialog

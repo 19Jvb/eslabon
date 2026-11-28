@@ -69,7 +69,10 @@ function withSession(target: NextResponse, response: NextResponse, cacheHeaders:
   return target;
 }
 
-// Static files and the Telegram webhook (no cookies, no session) skip the proxy.
+// Static files (images, the manifest and its icons, the apple-touch-icon) and the Telegram webhook (no cookies, no
+// session) skip the proxy.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|api/telegram/|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|api/telegram/|favicon\\.ico|manifest\\.webmanifest$|apple-icon$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

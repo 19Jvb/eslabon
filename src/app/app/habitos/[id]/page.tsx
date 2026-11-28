@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { focusRing, secondaryButton } from "@/app/ui";
 import { addMonths, EARLIEST_MONTH, monthTitle, monthWeeks, shownMonth } from "@/lib/dates";
 import { fetchAll, PAGE_SIZE } from "@/lib/fetch-all";
-import { HabitRef, HABITS_HEADING_ID } from "@/lib/habits";
+import { HABIT_GONE, HabitRef, HABITS_HEADING_ID } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
 import { userToday } from "@/lib/user-today";
 import { HabitListNotice } from "../../habit-forms";
@@ -21,7 +20,8 @@ type Props = {
 export const instant = false;
 
 // One query per request, shared by the title and the page. RLS hides other users' habits: theirs come back as null,
-// like a missing one. The proxy has already answered 404 for those; null here is one deleted in between.
+// like a missing one. The proxy has already answered 404 for those; null here is one deleted in between, usually
+// seen when marking a day re-renders this page (setCheckIn revalidates it).
 const loadHabit = cache(async (id: string) => {
   await connection();
   if (!HabitRef.safeParse({ id }).success) return { habit: null, failed: false };
@@ -49,7 +49,6 @@ export default async function HistoryPage({ params, searchParams }: Props) {
   const { id } = await params;
   const { mes } = await searchParams;
   const [{ habit, failed }, today] = await Promise.all([loadHabit(id), userToday()]);
-  if (!habit && !failed) notFound();
   const days = habit ? await loadDays(habit.id) : null;
   const month = shownMonth(typeof mes === "string" ? mes : undefined, today);
 
@@ -79,6 +78,15 @@ export default async function HistoryPage({ params, searchParams }: Props) {
             <MonthNav id={habit.id} month={month} today={today} />
           </HabitHistory>
         </HabitListNotice>
+      ) : habit === null && !failed ? (
+        <div className="flex flex-col items-start gap-4">
+          <p role="alert" className="font-medium text-red-700">
+            {HABIT_GONE}
+          </p>
+          <Link href="/app" className={secondaryButton}>
+            Tus hábitos
+          </Link>
+        </div>
       ) : (
         <p role="alert" className="font-medium text-red-700">
           No se pudo cargar el historial. Recarga la página para intentarlo de nuevo.

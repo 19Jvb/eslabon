@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandGlyph } from "@/app/brand-glyph";
+import { BRAND_DESCRIPTION, BrandGlyph } from "@/app/brand-glyph";
 import { DemoButton } from "@/app/demo-form";
 import { ProductPreview } from "@/app/product-preview";
 import { buttonBase } from "@/app/ui";
 
 export const metadata: Metadata = {
   title: { absolute: "Eslabón · No rompas la cadena" },
-  description: "Crea tus hábitos diarios, márcalos cada día y mira crecer tu racha. Prueba la cuenta demo sin registrarte.",
+  description: BRAND_DESCRIPTION,
 };
 
 const points = [

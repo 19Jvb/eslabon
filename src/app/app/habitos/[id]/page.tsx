@@ -5,11 +5,11 @@ import { cache } from "react";
 import { focusRing, secondaryButton } from "@/app/ui";
 import { addMonths, EARLIEST_MONTH, monthTitle, monthWeeks, shownMonth } from "@/lib/dates";
 import { fetchAll, PAGE_SIZE } from "@/lib/fetch-all";
-import { HABIT_GONE, HabitRef, HABITS_HEADING_ID } from "@/lib/habits";
+import { HabitRef, HABITS_HEADING_ID } from "@/lib/habits";
 import { createClient } from "@/lib/supabase/server";
 import { userToday } from "@/lib/user-today";
 import { HabitListNotice } from "../../habit-forms";
-import { HabitHistory } from "./habit-history";
+import { HabitGone, HabitHistory } from "./habit-history";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -79,14 +79,7 @@ export default async function HistoryPage({ params, searchParams }: Props) {
           </HabitHistory>
         </HabitListNotice>
       ) : habit === null && !failed ? (
-        <div className="flex flex-col items-start gap-4">
-          <p role="alert" className="font-medium text-red-700">
-            {HABIT_GONE}
-          </p>
-          <Link href="/app" className={secondaryButton}>
-            Tus hábitos
-          </Link>
-        </div>
+        <HabitGone />
       ) : (
         <p role="alert" className="font-medium text-red-700">
           No se pudo cargar el historial. Recarga la página para intentarlo de nuevo.

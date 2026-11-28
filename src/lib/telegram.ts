@@ -7,3 +7,9 @@ export function telegramStartLink(bot: string, code: string): string {
 export function botUsername(raw: string | undefined): string {
   return (raw ?? "").trim().replace(/^@/, "").trim();
 }
+
+// Where the bot token is sent. In production always to Telegram: TELEGRAM_API_BASE (the E2E simulator) only counts
+// outside it, so a wrong variable there cannot hand the token to another host.
+export function telegramApiBase(env: Record<string, string | undefined>): string {
+  return (env.VERCEL_ENV !== "production" && env.TELEGRAM_API_BASE) || "https://api.telegram.org";
+}

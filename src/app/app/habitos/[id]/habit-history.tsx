@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, type ReactNode, useId } from "react";
 import { ChainLink, dayButtonClass, HabitStats } from "@/app/habit-look";
+import { secondaryButton } from "@/app/ui";
 import { type Day, dayInMonthName } from "@/lib/dates";
+import { HABIT_GONE } from "@/lib/habits";
 import { ErrorMessage, type Habit, useCheckIns } from "../../habit-forms";
 
 const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
@@ -86,5 +89,22 @@ export function HabitHistory({
         {announcement}
       </p>
     </>
+  );
+}
+
+const focusOnMount = (link: HTMLAnchorElement | null) => link?.focus();
+
+// The habit deleted while its history is open (marking a day re-renders the page without it): the focused day goes
+// away with the calendar, so focus goes to the way back, not to the start of the page.
+export function HabitGone() {
+  return (
+    <div className="flex flex-col items-start gap-4">
+      <p role="alert" className="font-medium text-red-700">
+        {HABIT_GONE}
+      </p>
+      <Link href="/app" ref={focusOnMount} className={secondaryButton}>
+        Tus hábitos
+      </Link>
+    </div>
   );
 }

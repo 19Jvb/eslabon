@@ -11,6 +11,7 @@ import {
   HabitRef,
   habitErrorMessage,
   NewHabit,
+  newHabitErrorMessage,
   NoInput,
   OUT_OF_RANGE,
   RenameHabit,
@@ -45,7 +46,7 @@ export async function createHabit(input: unknown): Promise<ActionResult> {
   if (!user) return SESSION_EXPIRED;
 
   const { error } = await supabase.from("habits").insert(parsed.data);
-  if (error) return { ok: false, error: habitErrorMessage(error.code) };
+  if (error) return { ok: false, error: newHabitErrorMessage(error) };
 
   revalidatePath("/app");
   return { ok: true };

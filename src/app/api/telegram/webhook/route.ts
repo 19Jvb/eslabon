@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { requireEnv } from "@/lib/env";
 import type { Database } from "@/lib/supabase/database.types";
+import { telegramApiBase } from "@/lib/telegram";
 import { type BotRpc, type TelegramApi, handleUpdate } from "@/lib/telegram-bot";
 
 // Telegram's webhook. Only the secret set with setWebhook (secret_token) gets in; after that the answer is always 200,
@@ -59,7 +60,7 @@ function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
 
 function telegramApi(): TelegramApi {
   const token = requireEnv("TELEGRAM_BOT_TOKEN", process.env.TELEGRAM_BOT_TOKEN);
-  const base = process.env.TELEGRAM_API_BASE || "https://api.telegram.org";
+  const base = telegramApiBase(process.env);
   return async (method, body) => {
     const response = await fetch(`${base}/bot${token}/${method}`, {
       method: "POST",

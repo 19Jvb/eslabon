@@ -519,6 +519,22 @@ test.describe("marcar desde el historial", () => {
     await expect(page).toHaveURL(/\/app\/?$/);
     await expect(item(page, name), "el hábito borrado no está en la lista").toHaveCount(0);
   });
+
+  test("S-1 (T24): tras «Ese hábito ya no existe.» el foco está en «Tus hábitos» (no se pierde con el calendario) y Enter lleva a /app", async ({ page, api }) => {
+    const { name, id, today, previous } = await seedHabit(api);
+    await openHistory(page, id, name, previous);
+    const { error } = await api.from("habits").delete().eq("id", id);
+    expect(error).toBeNull();
+
+    // Con teclado, como D-11: el foco está en el día al marcarlo y ese botón desaparece con el calendario.
+    await dayIn(page, previous, 5, today).focus();
+    await page.keyboard.press("Enter");
+    await expect(alert(page, GONE)).toBeVisible();
+    const back = link(page, "Tus hábitos");
+    await expect(back, "el foco va a «Tus hábitos»").toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/app\/?$/);
+  });
 });
 
 // ---------------------------------------------------------------- 404, sesión y caché

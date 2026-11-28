@@ -73,6 +73,18 @@ anonymous.describe("portada sin sesión", () => {
     expect(content).not.toMatch(/create next app/i);
   });
 
+  anonymous("S-2 (T24): /login y /registro llevan la misma meta description que /: un solo texto, el de la marca", async ({ page }) => {
+    const descriptionOf = async (path: string) => {
+      await page.goto(path);
+      const description = page.locator('meta[name="description"]');
+      await expect(description, path).toHaveCount(1);
+      return ((await description.getAttribute("content")) ?? "").trim();
+    };
+    const landing = await descriptionOf("/");
+    expect(landing.length).toBeGreaterThanOrEqual(20);
+    for (const path of ["/login", "/registro"]) expect(await descriptionOf(path), path).toBe(landing);
+  });
+
   anonymous("los enlaces «Entrar» → /login y «Crear cuenta» → /registro", async ({ page }) => {
     await page.goto("/");
     await link(page, "Entrar").click();

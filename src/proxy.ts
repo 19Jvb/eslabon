@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireEnv } from "@/lib/env";
 import { HabitRef, historyHabitId } from "@/lib/habits";
+import { cookieOptions } from "@/lib/supabase/server";
 
 // A static page that calls notFound(): see the history check below.
 const MISSING_HABIT_PATH = "/habito-no-encontrado";
@@ -16,6 +17,7 @@ export async function proxy(request: NextRequest) {
     requireEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
     requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
     {
+      cookieOptions,
       cookies: {
         getAll() {
           return request.cookies.getAll();

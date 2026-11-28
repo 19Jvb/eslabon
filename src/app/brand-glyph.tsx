@@ -1,4 +1,4 @@
-// The brand: its colour (theme-color, manifest and icons), its one-line pitch (landing and manifest) and its mark.
+// The brand: its colour (theme-color, manifest and icons), its one-line pitch (every page's description and the manifest) and its mark.
 export const BRAND_COLOR = "#047857";
 export const BRAND_DESCRIPTION =
   "Crea tus hábitos diarios, márcalos cada día y mira crecer tu racha. Prueba la cuenta demo sin registrarte.";

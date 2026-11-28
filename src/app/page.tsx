@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BRAND_DESCRIPTION, BrandGlyph } from "@/app/brand-glyph";
+import { BrandGlyph } from "@/app/brand-glyph";
 import { DemoButton } from "@/app/demo-form";
 import { ProductPreview } from "@/app/product-preview";
 import { buttonBase } from "@/app/ui";
 
-export const metadata: Metadata = {
-  title: { absolute: "Eslabón · No rompas la cadena" },
-  description: BRAND_DESCRIPTION,
-};
+// The description is the root layout's.
+export const metadata: Metadata = { title: { absolute: "Eslabón · No rompas la cadena" } };
 
 const points = [
   {

@@ -74,6 +74,10 @@ export function habitColor(color: string): typeof UNKNOWN_COLOR {
 
 const DUPLICATE_HABIT = "Ya tienes un hábito con ese nombre.";
 
+// The habits_limit trigger (supabase/migrations/*_security_limits.sql) holds the same number.
+export const MAX_HABITS = 50;
+export const HABIT_LIMIT = `Has llegado al máximo de ${MAX_HABITS} hábitos.`;
+
 // The page h1: where focus goes when the focused habit disappears.
 export const HABITS_HEADING_ID = "habits-heading";
 
@@ -101,6 +105,14 @@ export const HABIT_GONE = "Ese hábito ya no existe.";
 // Translates by Postgres error code, never by the raw message.
 export function habitErrorMessage(code: string | undefined): string {
   return code === "23505" ? DUPLICATE_HABIT : GENERIC_ERROR;
+}
+
+// The habits_limit trigger raises check_violation (23514) with this fixed message. The message is only used to tell it
+// apart from the table's own checks (name, color), never shown.
+const LIMIT_MESSAGE = "Habit limit reached";
+
+export function newHabitErrorMessage(error: { code: string; message: string }): string {
+  return error.code === "23514" && error.message === LIMIT_MESSAGE ? HABIT_LIMIT : habitErrorMessage(error.code);
 }
 
 // The <id> of /app/habitos/<id> (any segment: the proxy checks it), or null on any other path.

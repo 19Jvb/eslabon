@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CheckIn, COLOR_IDS, HABIT_COLORS, habitColor, HabitRef, habitErrorMessage, historyHabitId, NewHabit, RenameHabit } from "./habits";
+import { CheckIn, COLOR_IDS, HABIT_COLORS, habitColor, HabitRef, habitErrorMessage, historyHabitId, NewHabit, newHabitErrorMessage, RenameHabit } from "./habits";
 
 const ID = "3f1c2a7e-9b4d-4e2a-8c1f-5d6e7f809a1b";
 const firstMessage = (result: { error?: { issues: { message: string }[] } }) => result.error?.issues[0].message;
@@ -98,6 +98,29 @@ describe("habitErrorMessage", () => {
 
   it.each(["42501", "23514", "PGRST116", undefined])("falls back to the generic message for %s", (code) => {
     expect(habitErrorMessage(code)).toBe("No se pudo completar. Inténtalo de nuevo.");
+  });
+});
+
+describe("newHabitErrorMessage", () => {
+  it("turns the habits_limit trigger's error (23514 + «Habit limit reached») into the limit message", () => {
+    expect(newHabitErrorMessage({ code: "23514", message: "Habit limit reached" })).toBe("Has llegado al máximo de 50 hábitos.");
+  });
+
+  it("a check violation of the table itself (another message) is the generic error, not the limit", () => {
+    const check = 'new row for relation "habits" violates check constraint "habits_name_check"';
+    expect(newHabitErrorMessage({ code: "23514", message: check })).toBe("No se pudo completar. Inténtalo de nuevo.");
+  });
+
+  it("the limit's message with another code is not the limit", () => {
+    expect(newHabitErrorMessage({ code: "P0001", message: "Habit limit reached" })).toBe("No se pudo completar. Inténtalo de nuevo.");
+  });
+
+  it("keeps the duplicate message for 23505", () => {
+    expect(newHabitErrorMessage({ code: "23505", message: "duplicate key" })).toBe("Ya tienes un hábito con ese nombre.");
+  });
+
+  it.each(["42501", "23503", "PGRST116", ""])("falls back to the generic message for %s", (code) => {
+    expect(newHabitErrorMessage({ code, message: "" })).toBe("No se pudo completar. Inténtalo de nuevo.");
   });
 });
 

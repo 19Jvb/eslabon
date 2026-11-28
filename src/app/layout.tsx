@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import type { ReactNode } from "react";
-import { BRAND_COLOR } from "@/app/brand-glyph";
+import { BRAND_COLOR, BRAND_DESCRIPTION } from "@/app/brand-glyph";
 import "./globals.css";
 
 // Self-hosted at build time by next/font: no request to Google at runtime.
@@ -10,7 +10,7 @@ const body = Instrument_Sans({ subsets: ["latin"], display: "swap", variable: "-
 
 export const metadata: Metadata = {
   title: { default: "Eslabón", template: "%s · Eslabón" },
-  description: "Crea hábitos diarios, márcalos cada día y no rompas la cadena.",
+  description: BRAND_DESCRIPTION,
 };
 
 // The browser bar of the installed app, the same colour as the manifest's theme_color.

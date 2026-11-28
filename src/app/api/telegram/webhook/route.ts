@@ -65,11 +65,34 @@ function botRpc(secret: string): BotRpc {
       unwrap(await supabase.rpc("telegram_delete_habit", { p_secret: secret, p_chat_id: chatId, p_habit_id: habitId })),
     loadSample: async (chatId) =>
       unwrap(await supabase.rpc("telegram_load_sample", { p_secret: secret, p_chat_id: chatId })),
+    // p_name left out (null in the DB) for /nuevo without a name.
+    startCreate: async (chatId, name) =>
+      unwrap(
+        await supabase.rpc("telegram_start_create", { p_secret: secret, p_chat_id: chatId, p_name: name ?? undefined }),
+      ),
+    createHabit: async (chatId, color) =>
+      unwrap(await supabase.rpc("telegram_create_habit", { p_secret: secret, p_chat_id: chatId, p_color: color })),
+    startRename: async (chatId, habitId) =>
+      unwrap(await supabase.rpc("telegram_start_rename", { p_secret: secret, p_chat_id: chatId, p_habit_id: habitId })),
+    renameHabit: async (chatId, name) =>
+      unwrap(await supabase.rpc("telegram_rename_habit", { p_secret: secret, p_chat_id: chatId, p_name: name })),
+    pendingAction: async (chatId) =>
+      unwrapNullable(await supabase.rpc("telegram_pending_action", { p_secret: secret, p_chat_id: chatId })),
+    cancel: async (chatId) => {
+      unwrapNullable(await supabase.rpc("telegram_cancel", { p_secret: secret, p_chat_id: chatId }));
+    },
   };
 }
 
-function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
-  if (error || data === null) throw new BotRpcError("RPC failed");
+function unwrap<T>(result: { data: T | null; error: unknown }): T {
+  const data = unwrapNullable(result);
+  if (data === null) throw new BotRpcError("RPC failed");
+  return data;
+}
+
+// For the RPCs where null is an answer (nothing pending) or the only one (void).
+function unwrapNullable<T>({ data, error }: { data: T | null; error: unknown }): T | null {
+  if (error) throw new BotRpcError("RPC failed");
   return data;
 }
 

@@ -11,7 +11,7 @@ import {
   shownMonth,
   WEEKDAY_LETTERS,
 } from "@/lib/dates";
-import { HABIT_GONE, OUT_OF_RANGE } from "@/lib/habits";
+import { COLOR_IDS, DUPLICATE_HABIT, HABIT_COLORS, HABIT_GONE, HABIT_LIMIT, HabitName, OUT_OF_RANGE } from "@/lib/habits";
 import { habitStats } from "@/lib/streak";
 
 // The bot's RPCs (supabase/migrations/*_telegram*.sql), already bound to the bot secret.
@@ -27,6 +27,13 @@ export type BotRpc = {
   setDay(chatId: number, habitId: string, day: Day, done: boolean): Promise<string>;
   deleteHabit(chatId: number, habitId: string): Promise<string>;
   loadSample(chatId: number): Promise<string>;
+  startCreate(chatId: number, name: string | null): Promise<string>;
+  createHabit(chatId: number, color: string): Promise<string>;
+  startRename(chatId: number, habitId: string): Promise<string>;
+  renameHabit(chatId: number, name: string): Promise<string>;
+  // 'create' or 'rename' while the chat waits for a name (or a color), null otherwise (also when it expired).
+  pendingAction(chatId: number): Promise<string | null>;
+  cancel(chatId: number): Promise<void>;
 };
 // What a BotRpc throws when the RPC fails: the user gets the generic message, never the raw error.
 export class BotRpcError extends Error {}
@@ -43,12 +50,22 @@ const LINK_FIRST = "Primero vincula tu cuenta desde la app con «Vincular con Te
 const HELP = [
   "Esto es lo que puedo hacer:",
   "/hoy: tus hábitos de hoy, para marcarlos o desmarcarlos",
-  "/habitos: tus hábitos con sus estadísticas y su historial",
+  "/habitos: tus hábitos con sus estadísticas y su historial, para marcar días, renombrarlos o borrarlos",
+  "/nuevo <nombre>: crea un hábito",
+  "/ejemplo: carga los datos de ejemplo si aún no tienes hábitos",
+  "/cancelar: cancela lo que estés haciendo (crear o renombrar un hábito)",
   "/vincular <código>: vincula tu cuenta de Eslabón con el código de la app",
   "/desvincular: desvincula tu cuenta",
   "/ayuda: esta lista",
 ].join("\n");
 const EMPTY_LIST = "Aún no tienes hábitos. Crea el primero en la app o carga los datos de ejemplo.";
+const ASK_NAME = "Escribe el nombre del hábito nuevo.";
+const NO_PENDING_COLOR = "No hay ningún hábito por crear. Envía /nuevo.";
+// The palette's buttons, in the web's order.
+const COLOR_EMOJI = { red: "🔴", orange: "🟠", amber: "🟡", green: "🟢", blue: "🔵", violet: "🟣" } satisfies Record<
+  (typeof COLOR_IDS)[number],
+  string
+>;
 // Telegram's limit for a message text.
 const MAX_TEXT = 4096;
 // callback_data of the buttons that do nothing: the month title, L–D, the gaps and the future days.
@@ -69,6 +86,7 @@ const CallbackData = z.union([
   z.tuple([z.literal("c"), Id, Flag]),
   z.tuple([z.literal("h"), Id]),
   z.tuple([z.literal("x"), Id]),
+  z.tuple([z.literal("k"), z.enum(COLOR_IDS)]),
   z.tuple([z.enum(["r", "y"]), Id]),
   z.tuple([z.literal("m"), Id, z.string().refine((month) => isValidDay(`${month}-01`))]),
   z.tuple([z.literal("d"), Id, z.string().refine(isValidDay), Flag]),
@@ -104,9 +122,8 @@ export async function handleUpdate(update: unknown, deps: { rpc: BotRpc; telegra
     return;
   }
 
-  const view = await orGeneric(onCommand(command?.[1].toLowerCase(), command?.[2] ?? "", chatId, rpc), {
-    text: GENERIC_ERROR,
-  });
+  const work = command ? onCommand(command[1].toLowerCase(), command[2] ?? "", chatId, rpc) : onText(message.text, chatId, rpc);
+  const view = await orGeneric(work, { text: GENERIC_ERROR });
   await telegram("sendMessage", { chat_id: chatId, ...view });
 }
 
@@ -120,7 +137,17 @@ async function orGeneric<T>(work: Promise<T>, generic: T): Promise<T> {
   }
 }
 
-async function onCommand(name: string | undefined, arg: string, chatId: number, rpc: BotRpc): Promise<View> {
+async function onCommand(name: string, arg: string, chatId: number, rpc: BotRpc): Promise<View> {
+  if (name === "cancelar") {
+    const pending = await rpc.pendingAction(chatId);
+    await rpc.cancel(chatId);
+    return { text: pending ? "Cancelado." : "No había nada que cancelar." };
+  }
+
+  // S-2: every command ends what was pending first (if that fails, the command does not run), so a later text cannot
+  // rename a habit from an earlier action. /nuevo then starts its own.
+  await rpc.cancel(chatId);
+
   if (name === "start" || name === "vincular") {
     const code = arg.replace(/\s+/g, "").toUpperCase();
     if (!code) return { text: name === "start" ? HELLO : "Envía /vincular seguido del código que te da la app." };
@@ -145,12 +172,47 @@ async function onCommand(name: string | undefined, arg: string, chatId: number, 
     return rows.length > 0 || (await isLinked(rpc, chatId)) ? listView(rows) : { text: LINK_FIRST };
   }
 
+  if (name === "nuevo") return startCreate(arg || null, chatId, rpc);
+
+  if (name === "ejemplo") {
+    const result = await rpc.loadSample(chatId);
+    if (result === "ok") return { text: "Datos de ejemplo cargados." };
+    if (result === "not_empty") return { text: "Ya tienes hábitos: los datos de ejemplo solo se cargan en una cuenta vacía." };
+    return { text: statusText(result) };
+  }
+
   if (name === "desvincular") {
     const result = await rpc.unlink(chatId);
     return { text: result === "unlinked" ? "Tu cuenta se ha desvinculado." : "No había ninguna cuenta vinculada." };
   }
 
   return { text: HELP };
+}
+
+// Free text: the name the chat is waiting for, or the help when it waits for nothing (or it expired).
+async function onText(text: string, chatId: number, rpc: BotRpc): Promise<View> {
+  const pending = await rpc.pendingAction(chatId);
+  if (pending === "create") return startCreate(text, chatId, rpc);
+  if (pending !== "rename") return { text: HELP };
+  const parsed = HabitName.safeParse(text);
+  // A rejected name keeps the rename pending: the next text tries again.
+  if (!parsed.success) return { text: parsed.error.issues[0].message };
+  const result = await rpc.renameHabit(chatId, parsed.data);
+  if (result === "ok") return { text: `Hábito renombrado a «${parsed.data}».` };
+  return { text: result === "no_pending" ? HELP : statusText(result) };
+}
+
+// First step of a new habit: with a name (validated and trimmed like the web's, S-3), the palette; without one, ask
+// for it. A rejected name keeps whatever was pending.
+async function startCreate(text: string | null, chatId: number, rpc: BotRpc): Promise<View> {
+  if (text === null) {
+    const result = await rpc.startCreate(chatId, null);
+    return { text: result === "ok" ? ASK_NAME : statusText(result) };
+  }
+  const parsed = HabitName.safeParse(text);
+  if (!parsed.success) return { text: parsed.error.issues[0].message };
+  const result = await rpc.startCreate(chatId, parsed.data);
+  return result === "ok" ? paletteView(parsed.data) : { text: statusText(result) };
 }
 
 async function onCallback(data: Callback, chatId: number, rpc: BotRpc): Promise<Outcome> {
@@ -174,6 +236,21 @@ async function onCallback(data: Callback, chatId: number, rpc: BotRpc): Promise<
       if (result !== "ok") return { answer: statusText(result) };
       return { answer: "Borrado", view: listView(await rpc.habits(chatId)) };
     }
+    case "k": {
+      const result = await rpc.createHabit(chatId, data[1]);
+      if (result === "no_pending") return { answer: NO_PENDING_COLOR };
+      if (result !== "ok") return { answer: statusText(result) };
+      // ponytail: the RPC does not return the habit, so the name is the newest one's (the list is in creation order);
+      // a web creation in the same instant could show the other name. Return the name from the RPC if that matters.
+      const newest = (await rpc.habits(chatId)).at(-1);
+      return newest ? { view: { text: `Hábito «${newest.name}» creado.` } } : { answer: HABIT_GONE };
+    }
+    case "r": {
+      const result = await rpc.startRename(chatId, data[1]);
+      if (result !== "ok") return { answer: statusText(result) };
+      const row = (await rpc.habits(chatId)).find((r) => r.habit_id === data[1]);
+      return row ? { view: { text: `Escribe el nuevo nombre de «${row.name}».` } } : { answer: HABIT_GONE };
+    }
     case "s": {
       const result = await rpc.loadSample(chatId);
       if (result !== "ok" && result !== "not_empty") return { answer: statusText(result) };
@@ -194,7 +271,7 @@ async function onCallback(data: Callback, chatId: number, rpc: BotRpc): Promise<
       // A month outside 2000-01…the link's month is not shown.
       return shownMonth(data[2], row.today) === data[2] ? { view: calendarView(row, data[2]) } : {};
     }
-    // NOOP, and «✏️ Renombrar» until its flow exists (T28).
+    // NOOP.
     default:
       return {};
   }
@@ -207,6 +284,8 @@ function statusText(status: string): string {
   if (status === "not_linked") return LINK_FIRST;
   if (status === "not_found") return HABIT_GONE;
   if (status === "out_of_range") return OUT_OF_RANGE;
+  if (status === "duplicate") return DUPLICATE_HABIT;
+  if (status === "limit") return HABIT_LIMIT;
   return GENERIC_ERROR;
 }
 
@@ -230,6 +309,15 @@ function listView(rows: HabitRow[]): View {
   while (textOf(shown).length > MAX_TEXT) shown--;
   return { text: textOf(shown), reply_markup: { inline_keyboard: rows.map((row) => [button(row.name, `h:${row.habit_id}`)]) } };
 }
+
+const paletteView = (name: string): View => ({
+  text: `Elige un color para «${name}».`,
+  reply_markup: {
+    inline_keyboard: [COLOR_IDS.slice(0, 3), COLOR_IDS.slice(3)].map((ids) =>
+      ids.map((id) => button(`${COLOR_EMOJI[id]} ${HABIT_COLORS[id].label}`, `k:${id}`)),
+    ),
+  },
+});
 
 function menuView(row: HabitRow): View {
   const id = row.habit_id;

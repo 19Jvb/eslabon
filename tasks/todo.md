@@ -282,7 +282,7 @@
   - Borrar: confirmación «¿Borrar «<nombre>» y todo su historial?» con «Sí, borrar» y «Cancelar».
   - `/hoy` sigue igual. Lo marcado en el bot se ve en la web al recargar, y al revés.
   - Heredado de T26-r1 (S-1): cualquier error de una RPC (p. ej. un 23503 si el hábito se borra en medio) → el bot responde con un mensaje genérico en español y el webhook sigue devolviendo 200; nunca el error crudo.
-- [ ] **T28: El bot crea y renombra (la aceptación va primero):**
+- [x] **T28: El bot crea y renombra (la aceptación va primero):**
   - `/nuevo <nombre>` (o `/nuevo` a secas → pide el nombre): valida el nombre como la web y ofrece la paleta (🔴 🟠 🟡 🟢 🔵 🟣); al elegir el color, crea el hábito y lo confirma. Mensajes en español para el duplicado, el límite («Has llegado al máximo de 50 hábitos.») y el nombre no válido.
   - «✏️ Renombrar» → «Escribe el nuevo nombre de «<nombre>».»; el siguiente texto lo renombra (mismas validaciones).
   - `/ejemplo`: carga los datos de ejemplo si la cuenta está vacía.

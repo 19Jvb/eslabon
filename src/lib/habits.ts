@@ -72,7 +72,7 @@ export function habitColor(color: string): typeof UNKNOWN_COLOR {
   return Object.hasOwn(HABIT_COLORS, color) ? HABIT_COLORS[color as HabitColor] : UNKNOWN_COLOR;
 }
 
-const DUPLICATE_HABIT = "Ya tienes un hábito con ese nombre.";
+export const DUPLICATE_HABIT = "Ya tienes un hábito con ese nombre.";
 
 // The habits_limit trigger (supabase/migrations/*_security_limits.sql) holds the same number.
 export const MAX_HABITS = 50;
@@ -84,7 +84,8 @@ export const HABITS_HEADING_ID = "habits-heading";
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const EMPTY_NAME = "Escribe un nombre";
-const HabitName = z.string(EMPTY_NAME).trim().min(1, EMPTY_NAME).max(60, "Máximo 60 caracteres");
+// Also the bot's (src/lib/telegram-bot.ts): same rules, same messages.
+export const HabitName = z.string(EMPTY_NAME).trim().min(1, EMPTY_NAME).max(60, "Máximo 60 caracteres");
 const HabitId = z.uuid(GENERIC_ERROR);
 
 // The object-level message covers a body that is not an object (forged request): zod's default is English.

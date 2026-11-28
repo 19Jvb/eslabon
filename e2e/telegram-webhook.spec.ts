@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { expect, type APIRequestContext, type APIResponse } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { EARLIEST_DAY, EARLIEST_MONTH, addDays } from "../src/lib/dates";
-import { MADRID, apiClient, cleanUp, dayAt, env, expectedStats, mark, marked, prefix, seed, test, wipeAll } from "./helpers";
+import {
+  MADRID, apiClient, cleanUp, dayAt, env, expectedStats, item, mark, marked, openApp, prefix, seed, test, tooLong, wipeAll,
+} from "./helpers";
 
 // T19: POST /api/telegram/webhook, de punta a punta, con el usuario de E2E (la demo no se toca).
 // Montaje: este archivo arranca un simulador de la API de Telegram en TELEGRAM_API_BASE (playwright.config.ts la fija a
@@ -13,6 +15,7 @@ import { MADRID, apiClient, cleanUp, dayAt, env, expectedStats, mark, marked, pr
 // Fuera de alcance aquí (revisión por inspección): 503 sin TELEGRAM_WEBHOOK_SECRET (exige otro servidor), la
 // comparación en tiempo constante, que no se use service_role y que handleUpdate tenga sus tests unitarios.
 // T27 (al final del archivo): /habitos, el menú de cada hábito, el calendario del historial y borrar, con el mismo simulador.
+// T28 (después de T27): /nuevo y la paleta, renombrar, /ejemplo, /cancelar y la /ayuda completa, con el mismo simulador.
 
 const HOOK = "/api/telegram/webhook";
 const HEADER = "X-Telegram-Bot-Api-Secret-Token";
@@ -533,7 +536,7 @@ const SAMPLE = "Cargar datos de ejemplo";
 const SAMPLE_NAMES = ["Beber 2 litros de agua", "Caminar 30 minutos", "Leer 20 minutos"];
 const WEEK = ["L", "M", "X", "J", "V", "S", "D"];
 /** Errores crudos de PostgREST/Postgres y estados de las RPC que nunca deben llegar al usuario (S-1 de T26-r1). */
-const RAW = /violates|duplicate key|invalid input|syntax error|constraint|PGRST|\b(?:22|23|42|P0)[0-9A-Z]{3}\b|not_linked|not_found|out_of_range|no_pending|not_empty/i;
+const RAW = /violates|duplicate key|invalid input|syntax error|constraint|PGRST|\b(?:22|23|42|P0)[0-9A-Z]{3}\b|not_linked|not_found|out_of_range|no_pending|not_empty|^(?:ok|invalid|duplicate|limit|create|rename)$/i;
 
 const menuButtons = (id: string, month: string) => [
   { text: "📅 Historial", callback_data: `m:${id}:${month}` },
@@ -973,5 +976,419 @@ test.describe("T27: seguridad", () => {
       expect(answer.text).not.toBe("Marcado");
     }
     expect(await snapshot(api)).toBe(before);
+  });
+});
+
+// ---------- T28: el bot crea y renombra ----------
+// Contrato que fijan estos tests (texto plano; callback_data ≤ 64 bytes; los mensajes de error, los de la web):
+//   /nuevo <nombre>     → (trim) válido: «Elige un color para «<nombre>».» con 6 botones, en este orden, cuyo texto empieza por
+//                          🔴 🟠 🟡 🟢 🔵 🟣 y cuyo callback_data es k:red · k:orange · k:amber · k:green · k:blue · k:violet.
+//                          No válido: «Escribe un nombre» / «Máximo 60 caracteres» / «Ya tienes un hábito con ese nombre.» /
+//                          «Has llegado al máximo de 50 hábitos.», sin botones.
+//   /nuevo              → «Escribe el nombre del hábito nuevo.»; el siguiente texto es el nombre (como /nuevo <nombre>).
+//   k:<color>           → answerCallbackQuery y crea con el nombre pendiente; dice (mensaje nuevo o edición) «Hábito «<nombre>» creado.».
+//                          Si entre medias el nombre se duplicó o se llegó a 50 → el mensaje de la web (en el toast o en un mensaje).
+//                          Sin nada pendiente → lo dice en el callback y no crea. k: fuera de la paleta o mal formada → 200 y nada.
+//   r:<id>              → «Escribe el nuevo nombre de «<nombre>».» (mensaje nuevo o edición); el siguiente texto (trim) lo renombra:
+//                          «Hábito renombrado a «<nuevo>».». No válido o duplicado → el mensaje de la web y sigue esperando el nombre.
+//                          Hábito borrado entre medias → «Ese hábito ya no existe.».
+//   /ejemplo            → cuenta vacía: «Datos de ejemplo cargados.» y los 3 hábitos; si no: «Ya tienes hábitos: los datos de ejemplo
+//                          solo se cargan en una cuenta vacía.».
+//   /cancelar           → «Cancelado.» si había algo pendiente; si no, «No había nada que cancelar.».
+//   Cualquier comando cancela lo pendiente antes de ejecutarse (S-2). Texto sin nada pendiente → la ayuda.
+//   Fuera de alcance aquí: la caducidad de 10 minutos (fase A de T26; el bot solo pregunta a telegram_pending_action).
+
+const ASK_NAME = "Escribe el nombre del hábito nuevo.";
+const pickColor = (name: string) => `Elige un color para «${name}».`;
+const created = (name: string) => `Hábito «${name}» creado.`;
+const askRename = (name: string) => `Escribe el nuevo nombre de «${name}».`;
+const renamed = (name: string) => `Hábito renombrado a «${name}».`;
+const EMPTY_NAME = "Escribe un nombre";
+const TOO_LONG = "Máximo 60 caracteres";
+const DUPLICATE = "Ya tienes un hábito con ese nombre.";
+const LIMIT = "Has llegado al máximo de 50 hábitos.";
+const SAMPLE_LOADED = "Datos de ejemplo cargados.";
+const SAMPLE_NOT_EMPTY = "Ya tienes hábitos: los datos de ejemplo solo se cargan en una cuenta vacía.";
+const CANCELLED = "Cancelado.";
+const NOTHING_TO_CANCEL = "No había nada que cancelar.";
+const ALL_COMMANDS = ["/hoy", "/habitos", "/nuevo", "/ejemplo", "/cancelar", "/vincular", "/desvincular", "/ayuda"];
+const PALETTE = [["🔴", "red"], ["🟠", "orange"], ["🟡", "amber"], ["🟢", "green"], ["🔵", "blue"], ["🟣", "violet"]] as const;
+
+/** Lo que el bot le dice al chat (mensajes nuevos y ediciones) a partir de la llamada n.º `from` del simulador. */
+const saidSince = (chat: number, from: number) =>
+  calls
+    .slice(from)
+    .filter((c) => ["sendMessage", "editMessageText"].includes(c.method) && String(c.body.chat_id) === String(chat))
+    .map((c) => plain(c.body.text));
+
+async function expectSaid(chat: number, from: number, text: string, what: string) {
+  await expect.poll(() => saidSince(chat, from), { message: `${what}: «${text}»` }).toContain(text);
+}
+
+/** Manda un texto y espera que el bot conteste exactamente `text` en un mensaje nuevo. Devuelve ese mensaje. */
+async function expectReply(request: APIRequestContext, chat: number, input: string, text: string) {
+  const body = await ask(request, chat, input);
+  expect(plain(body.text), `«${input.slice(0, 40)}» →`).toBe(text);
+  return body;
+}
+
+function expectPalette(body: Body, name: string) {
+  expect(plain(body.text), "el texto de la paleta").toBe(pickColor(name));
+  const kb = buttons(body);
+  expect(kb.map((b) => b.callback_data), "los 6 colores de la paleta, en orden").toEqual(PALETTE.map(([, c]) => `k:${c}`));
+  kb.forEach((b, i) => expect(b.text.startsWith(PALETTE[i][0]), `«${b.text}» empieza por ${PALETTE[i][0]}`).toBe(true));
+}
+
+/** Pulsa un botón y espera que el bot diga `text`, en el toast del callback o en un mensaje (nuevo o editado). */
+async function tapSays(request: APIRequestContext, chat: number, data: string, messageId: number, text: string) {
+  const from = calls.length;
+  const cb = callback(chat, data, messageId);
+  expect((await post(request, cb.update)).status(), `«${data}» → 200`).toBe(200);
+  const answer = await answered(cb.id);
+  await expect
+    .poll(() => [plain(answer.text), ...saidSince(chat, from)], { message: `«${data}» dice «${text}»` })
+    .toContain(text);
+}
+
+/** Pulsa «✏️ Renombrar» (r:<id>) y espera la pregunta por el nombre nuevo. */
+async function startRename(request: APIRequestContext, chat: number, id: string, name: string, messageId: number) {
+  const from = calls.length;
+  await press(request, chat, `r:${id}`, messageId);
+  await expectSaid(chat, from, askRename(name), "pide el nombre nuevo");
+}
+
+/** Los hábitos del usuario de E2E con ese nombre (ilike). */
+async function named(api: SupabaseClient, name: string) {
+  const { data, error } = await api.from("habits").select("id, name, color").ilike("name", name);
+  if (error) throw new Error(`No se pudo leer: ${error.message}`);
+  return data;
+}
+const nameOf = async (api: SupabaseClient, id: string) => (await api.from("habits").select("name").eq("id", id)).data;
+
+async function fillTo(api: SupabaseClient, target: number, tag: string) {
+  const { count, error } = await api.from("habits").select("id", { count: "exact", head: true });
+  if (error || count === null) throw new Error(`No se pudo contar: ${error?.message}`);
+  const rows = Array.from({ length: target - count }, (_, i) => ({ name: `${tag}-relleno-${i + 1}` }));
+  if (rows.length && (await api.from("habits").insert(rows)).error) throw new Error(`No se pudo llegar a ${target}`);
+}
+
+/** /nuevo <nombre> en un chat vinculado: comprueba la paleta y devuelve su message_id. */
+async function startNew(request: APIRequestContext, chat: number, name: string) {
+  const body = await ask(request, chat, `/nuevo ${name}`);
+  expectPalette(body, name);
+  return messageIdOf(body);
+}
+
+/** Toca un color y espera «Hábito «<nombre>» creado.». */
+async function pickAndCreate(request: APIRequestContext, chat: number, color: string, messageId: number, name: string) {
+  const from = calls.length;
+  await press(request, chat, `k:${color}`, messageId);
+  await expectSaid(chat, from, created(name), `k:${color} confirma`);
+}
+
+test.describe("T28: /nuevo", () => {
+  test("/nuevo <nombre> → «Elige un color para «<nombre>».» con 🔴 🟠 🟡 🟢 🔵 🟣 (k:red…k:violet); al tocar 🔵 crea el hábito azul y dice «Hábito «<nombre>» creado.»", async ({ request, api }) => {
+    const { chat } = await linkedWith(request, api, "ya");
+    const name = `${prefix()}-nuevo con espacios`;
+    const messageId = await startNew(request, chat, name);
+    expect(await named(api, name), "elegir el color es lo que crea").toEqual([]);
+    await pickAndCreate(request, chat, "blue", messageId, name);
+    expect((await named(api, name)).map((h) => ({ name: h.name, color: h.color }))).toEqual([{ name, color: "blue" }]);
+    expect((await botHabits(chat)).map((r) => r.name).at(-1), "el bot lo ve al final de la lista").toBe(name);
+  });
+
+  test("S-3: «/nuevo   <nombre>   » quita los espacios sobrantes: la paleta y el hábito llevan el nombre limpio", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const name = `${prefix()}-limpio`;
+    const body = await ask(request, chat, `/nuevo    ${name}    `);
+    expectPalette(body, name);
+    await pickAndCreate(request, chat, "red", messageIdOf(body), name);
+    expect((await named(api, `%${name}%`)).map((h) => h.name), "sin espacios en la BD").toEqual([name]);
+  });
+
+  test("/nuevo a secas → «Escribe el nombre del hábito nuevo.» sin botones; el siguiente texto (con espacios sobrantes) es el nombre y sale la paleta; 🟣 lo crea violeta", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    expect(buttons(await expectReply(request, chat, "/nuevo", ASK_NAME))).toEqual([]);
+    const name = `${prefix()}-a secas`;
+    const palette = await ask(request, chat, `  ${name}  `);
+    expectPalette(palette, name);
+    await pickAndCreate(request, chat, "violet", messageIdOf(palette), name);
+    expect((await named(api, name)).map((h) => h.color)).toEqual(["violet"]);
+  });
+
+  test("los 6 colores de la paleta se guardan como en la web (red, orange, amber, green, blue, violet)", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const p = prefix();
+    for (const [, color] of PALETTE) {
+      const name = `${p}-${color}`;
+      await pickAndCreate(request, chat, color, await startNew(request, chat, name), name);
+      expect((await named(api, name)).map((h) => h.color), name).toEqual([color]);
+    }
+  });
+
+  test("nombre no válido como la web: 61 caracteres → «Máximo 60 caracteres»; duplicado sin mayúsculas → «Ya tienes un hábito con ese nombre.»; solo espacios tras /nuevo → «Escribe un nombre»; sin paleta ni hábito", async ({ request, api }) => {
+    const { chat, names: [existing] } = await linkedWith(request, api, "existe");
+    const before = await snapshot(api);
+    const p = prefix();
+    expect(buttons(await expectReply(request, chat, `/nuevo ${tooLong(p)}`, TOO_LONG))).toEqual([]);
+    expect(buttons(await expectReply(request, chat, `/nuevo ${existing.toUpperCase()}`, DUPLICATE))).toEqual([]);
+    await expectReply(request, chat, "/nuevo", ASK_NAME);
+    expect(buttons(await expectReply(request, chat, tooLong(p), TOO_LONG)), "también como texto tras /nuevo").toEqual([]);
+    await expectReply(request, chat, "/nuevo", ASK_NAME);
+    expect(buttons(await expectReply(request, chat, "   ", EMPTY_NAME)), "solo espacios").toEqual([]);
+    expect(await snapshot(api)).toBe(before);
+  });
+
+  test("60 caracteres sí valen: la paleta y se crea con el nombre entero", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const name = tooLong(prefix()).slice(0, 60);
+    await pickAndCreate(request, chat, "green", await startNew(request, chat, name), name);
+    expect((await named(api, name)).map((h) => h.name)).toEqual([name]);
+  });
+
+  test("el límite: con 50 hábitos, /nuevo <nombre> → «Has llegado al máximo de 50 hábitos.» sin paleta; con 49 y la web ocupando el hueco antes del color → el mismo mensaje y sigue en 50", async ({ request, api }) => {
+    await wipeAll(api);
+    try {
+      const p = prefix();
+      await fillTo(api, 50, p);
+      const chat = await linkChat(request, api);
+      expect(buttons(await expectReply(request, chat, `/nuevo ${p}-51`, LIMIT))).toEqual([]);
+      await api.from("habits").delete().eq("name", `${p}-relleno-1`);
+      const messageId = await startNew(request, chat, `${p}-bot`);
+      expect((await api.from("habits").insert({ name: `${p}-web` })).error, "la web ocupa el n.º 50").toBeNull();
+      await tapSays(request, chat, "k:blue", messageId, LIMIT);
+      expect(await named(api, `${p}-bot`)).toEqual([]);
+      const { count } = await api.from("habits").select("id", { count: "exact", head: true });
+      expect(count).toBe(50);
+    } finally {
+      await wipeAll(api);
+    }
+  });
+
+  test("duplicado entre el nombre y el color (la web crea el mismo nombre) → «Ya tienes un hábito con ese nombre.» y no hay dos", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const name = `${prefix()}-carrera`;
+    const messageId = await startNew(request, chat, name);
+    await seed(api, { name });
+    await tapSays(request, chat, "k:orange", messageId, DUPLICATE);
+    expect(await named(api, name)).toHaveLength(1);
+  });
+
+  test("doble toque en el color (dos callbacks a la vez) → un solo hábito; un tercer toque después tampoco crea otro", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const name = `${prefix()}-doble`;
+    const messageId = await startNew(request, chat, name);
+    const taps = [callback(chat, "k:amber", messageId), callback(chat, "k:amber", messageId)];
+    const responses = await Promise.all(taps.map((t) => post(request, t.update)));
+    expect(responses.map((r) => r.status())).toEqual([200, 200]);
+    for (const t of taps) await answered(t.id);
+    await press(request, chat, "k:amber", messageId);
+    await settle();
+    expect((await named(api, name)).map((h) => h.color), "un solo hábito").toEqual(["amber"]);
+  });
+
+  test("un color sin nada pendiente → el callback dice algo y no crea nada; k: fuera de la paleta o mal formada → 200, sin editar, sin enviar y sin crear", async ({ request, api }) => {
+    const { chat } = await linkedWith(request, api, "solo");
+    const { messageId } = await openList(request, chat);
+    const before = await snapshot(api);
+    const { answer } = await press(request, chat, "k:red", messageId);
+    expect(String(answer.text ?? "").trim(), "sin pendiente: dice algo").not.toBe("");
+    await startNew(request, chat, `${prefix()}-mal`);
+    const sent = sentTo(chat).length;
+    const edits = sentTo(chat, "editMessageText").length;
+    for (const data of ["k:pink", "k:", "k", "k:red:x", "K:red", "k:RED", `k:${"red".repeat(30)}`]) await pressRaw(request, chat, data, messageId);
+    await settle();
+    expect(sentTo(chat, "editMessageText").length, "no edita").toBe(edits);
+    expect(sentTo(chat).length, "no envía mensajes").toBe(sent);
+    expect(await snapshot(api)).toBe(before);
+  });
+});
+
+test.describe("T28: renombrar", () => {
+  test("«✏️ Renombrar» (r:<id>) → «Escribe el nuevo nombre de «<nombre>».»; el siguiente texto, sin espacios sobrantes, lo renombra y dice «Hábito renombrado a «<nuevo>».»; otro texto después → la ayuda", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "viejo", "otro");
+    const { messageId } = await openList(request, chat);
+    await (await press(request, chat, `h:${id}`, messageId)).edit();
+    await startRename(request, chat, id, name, messageId);
+    const next = `${prefix()}-renombrado`;
+    await expectReply(request, chat, `   ${next}   `, renamed(next));
+    expect(await nameOf(api, id), "renombrado y sin espacios").toEqual([{ name: next }]);
+    const help = String((await ask(request, chat, "/ayuda")).text);
+    expect((await ask(request, chat, `${prefix()}-otra-vez`)).text, "ya no queda nada pendiente").toBe(help);
+    expect(await nameOf(api, id)).toEqual([{ name: next }]);
+  });
+
+  test("mismas validaciones: solo espacios, 61 caracteres y un duplicado sin mayúsculas → el mensaje de la web y sigue esperando; luego un nombre válido renombra", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name, other] } = await linkedWith(request, api, "uno", "dos");
+    const { messageId } = await openList(request, chat);
+    await startRename(request, chat, id, name, messageId);
+    await expectReply(request, chat, "   ", EMPTY_NAME);
+    await expectReply(request, chat, tooLong(prefix()), TOO_LONG);
+    await expectReply(request, chat, other.toUpperCase(), DUPLICATE);
+    expect(await nameOf(api, id), "sin cambios").toEqual([{ name }]);
+    const next = `${prefix()}-bien`;
+    await expectReply(request, chat, next, renamed(next));
+    expect(await nameOf(api, id)).toEqual([{ name: next }]);
+  });
+
+  test("el hábito se borra en la web entre «✏️ Renombrar» y el nombre → «Ese hábito ya no existe.» y no se crea nada", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "borrado");
+    const { messageId } = await openList(request, chat);
+    await startRename(request, chat, id, name, messageId);
+    await api.from("habits").delete().eq("id", id);
+    const next = `${prefix()}-tarde`;
+    await expectReply(request, chat, next, GONE);
+    expect(await named(api, next)).toEqual([]);
+  });
+
+  test("r:<id> con un hábito inexistente → «Ese hábito ya no existe.» y el texto siguiente es la ayuda", async ({ request, api }) => {
+    const { chat } = await linkedWith(request, api, "solo");
+    const { messageId } = await openList(request, chat);
+    expect((await press(request, chat, `r:${randomUUID()}`, messageId)).answer.text).toBe(GONE);
+    const help = String((await ask(request, chat, "/ayuda")).text);
+    const before = await snapshot(api);
+    expect((await ask(request, chat, `${prefix()}-nada`)).text).toBe(help);
+    expect(await snapshot(api)).toBe(before);
+  });
+});
+
+test.describe("T28: /cancelar y S-2 (cualquier comando cancela lo pendiente)", () => {
+  test("/cancelar sin nada pendiente → «No había nada que cancelar.»; tras /nuevo → «Cancelado.» y el texto siguiente es la ayuda, no un nombre", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    await expectReply(request, chat, "/cancelar", NOTHING_TO_CANCEL);
+    await expectReply(request, chat, "/nuevo", ASK_NAME);
+    await expectReply(request, chat, "/cancelar", CANCELLED);
+    const help = String((await ask(request, chat, "/ayuda")).text);
+    const after = await ask(request, chat, `${prefix()}-cancelado`);
+    expect(after.text, "ya no es un nombre").toBe(help);
+    expect(buttons(after), "sin paleta").toEqual([]);
+    await expectReply(request, chat, "/cancelar", NOTHING_TO_CANCEL);
+  });
+
+  test("/cancelar con la paleta abierta → «Cancelado.» y tocar el color ya no crea nada", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const name = `${prefix()}-sin-color`;
+    const messageId = await startNew(request, chat, name);
+    await expectReply(request, chat, "/cancelar", CANCELLED);
+    const { answer } = await press(request, chat, "k:green", messageId);
+    expect(String(answer.text ?? "").trim(), "dice algo").not.toBe("");
+    await settle();
+    expect(await named(api, name)).toEqual([]);
+  });
+
+  test("/cancelar con un renombrado pendiente → «Cancelado.» y el texto siguiente no renombra", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "quieto");
+    const { messageId } = await openList(request, chat);
+    await startRename(request, chat, id, name, messageId);
+    await expectReply(request, chat, "/cancelar", CANCELLED);
+    await ask(request, chat, `${prefix()}-no`);
+    expect(await nameOf(api, id)).toEqual([{ name }]);
+  });
+
+  for (const command of ["/hoy", "/habitos", "/ayuda", "/ejemplo", "/inventado"]) {
+    test(`S-2: ${command} tras «✏️ Renombrar» cancela lo pendiente: el texto siguiente no renombra el hábito`, async ({ request, api }) => {
+      const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "s2");
+      const { messageId } = await openList(request, chat);
+      await startRename(request, chat, id, name, messageId);
+      await ask(request, chat, command);
+      const after = await ask(request, chat, `${prefix()}-pisado`);
+      expect(plain(after.text), "no confirma un renombrado").not.toMatch(/^Hábito renombrado/);
+      expect(await nameOf(api, id)).toEqual([{ name }]);
+    });
+  }
+
+  test("S-2: /nuevo tras «✏️ Renombrar» sustituye lo pendiente: el texto siguiente es el nombre del hábito nuevo, no un renombrado", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "sustituido");
+    const { messageId } = await openList(request, chat);
+    await startRename(request, chat, id, name, messageId);
+    await expectReply(request, chat, "/nuevo", ASK_NAME);
+    const fresh = `${prefix()}-fresco`;
+    expectPalette(await ask(request, chat, fresh), fresh);
+    expect(await nameOf(api, id)).toEqual([{ name }]);
+  });
+
+  test("S-2: /hoy tras /nuevo <nombre> cancela la paleta: tocar el color ya no crea nada", async ({ request, api }) => {
+    const { chat } = await linkedWith(request, api, "hoy");
+    const name = `${prefix()}-sin-crear`;
+    const messageId = await startNew(request, chat, name);
+    await ask(request, chat, "/hoy");
+    await press(request, chat, "k:blue", messageId);
+    await settle();
+    expect(await named(api, name)).toEqual([]);
+  });
+});
+
+test.describe("T28: /ejemplo, /ayuda, sin vínculo y la web", () => {
+  test("/ejemplo con la cuenta vacía → «Datos de ejemplo cargados.» y los 3 hábitos; otra vez → «Ya tienes hábitos: …» sin duplicar", async ({ request, api }) => {
+    await wipeAll(api);
+    try {
+      const chat = await linkChat(request, api);
+      await expectReply(request, chat, "/ejemplo", SAMPLE_LOADED);
+      expect((await botHabits(chat)).map((r) => r.name).sort()).toEqual(SAMPLE_NAMES);
+      await expectReply(request, chat, "/ejemplo", SAMPLE_NOT_EMPTY);
+      expect(await botHabits(chat)).toHaveLength(3);
+    } finally {
+      await wipeAll(api);
+    }
+  });
+
+  test("/ejemplo con hábitos → «Ya tienes hábitos: …» y nada cambia", async ({ request, api }) => {
+    const { chat } = await linkedWith(request, api, "tengo");
+    const before = await snapshot(api);
+    await expectReply(request, chat, "/ejemplo", SAMPLE_NOT_EMPTY);
+    expect(await snapshot(api)).toBe(before);
+  });
+
+  test("/ayuda nombra todos los comandos (hoy, habitos, nuevo, ejemplo, cancelar, vincular, desvincular, ayuda); un texto libre sin nada pendiente → la misma ayuda", async ({ request, api }) => {
+    const chat = await linkChat(request, api);
+    const help = String((await ask(request, chat, "/ayuda")).text);
+    for (const command of ALL_COMMANDS) expect(help, `la ayuda nombra ${command}`).toMatch(new RegExp(`${command}(?![a-z])`));
+    expect((await ask(request, chat, `${prefix()}-texto libre`)).text).toBe(help);
+  });
+
+  test("sin vínculo: /nuevo <nombre>, /nuevo y /ejemplo → «Primero vincula tu cuenta…»; un color o r:<id> lo dicen en el callback; nada cambia", async ({ request, api }) => {
+    const [id] = await seed(api, { name: `${prefix()}-ajeno` });
+    const before = await snapshot(api);
+    const stranger = fakeChat();
+    for (const text of [`/nuevo ${prefix()}-intruso`, "/nuevo", "/ejemplo"]) {
+      expect(buttons(await expectReply(request, stranger, text, LINK_FIRST))).toEqual([]);
+    }
+    expect([NOTHING_TO_CANCEL, LINK_FIRST]).toContain(plain((await ask(request, stranger, "/cancelar")).text));
+    for (const data of ["k:red", `r:${id}`]) {
+      const { answer } = await press(request, stranger, data, 1);
+      expect(String(answer.text ?? "").trim(), `«${data.slice(0, 2)}» sin vínculo dice algo`).not.toBe("");
+    }
+    expect(await snapshot(api)).toBe(before);
+  });
+
+  test("en un grupo, /nuevo <nombre>, /nuevo, /ejemplo y /cancelar no crean nada y, si responde, es «Úsame en un chat privado.»", async ({ request, api }) => {
+    await linkChat(request, api);
+    const before = await snapshot(api);
+    const group = -(1_000_000_000_000 + Math.floor(Math.random() * 1_000_000_000));
+    for (const text of [`/nuevo ${prefix()}-grupo`, "/nuevo", "/ejemplo", "/cancelar"]) {
+      expect((await post(request, message(group, text, "group"))).status(), text).toBe(200);
+    }
+    await settle();
+    const replies = calls.filter((c) => String(c.body.chat_id) === String(group)).map((c) => c.body.text);
+    expect(replies.filter((t) => t !== PRIVATE_ONLY)).toEqual([]);
+    expect(await snapshot(api)).toBe(before);
+  });
+
+  test("lo creado y lo renombrado en el bot se ve en la web al recargar", async ({ request, api, page }) => {
+    const chat = await linkChat(request, api);
+    const p = prefix();
+    const name = `${p}-desde-el-bot`;
+    await pickAndCreate(request, chat, "violet", await startNew(request, chat, name), name);
+    await openApp(page);
+    await expect(item(page, name), "la web ve el hábito creado en el bot").toBeVisible();
+
+    const [{ id }] = await named(api, name);
+    const { messageId } = await openList(request, chat);
+    await startRename(request, chat, id, name, messageId);
+    const next = `${p}-renombrado-en-el-bot`;
+    await expectReply(request, chat, next, renamed(next));
+    await page.reload();
+    await expect(item(page, next), "la web ve el nombre nuevo").toBeVisible();
+    await expect(item(page, name)).toHaveCount(0);
   });
 });

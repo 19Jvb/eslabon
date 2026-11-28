@@ -45,12 +45,24 @@ function setup(rpc: Partial<BotRpc> = {}) {
       setDay: vi.fn(rpc.setDay ?? (async () => "ok")),
       deleteHabit: vi.fn(rpc.deleteHabit ?? (async () => "ok")),
       loadSample: vi.fn(rpc.loadSample ?? (async () => "ok")),
+      startCreate: vi.fn(rpc.startCreate ?? (async () => "ok")),
+      createHabit: vi.fn(rpc.createHabit ?? (async () => "ok")),
+      startRename: vi.fn(rpc.startRename ?? (async () => "ok")),
+      renameHabit: vi.fn(rpc.renameHabit ?? (async () => "ok")),
+      pendingAction: vi.fn(rpc.pendingAction ?? (async (): Promise<string | null> => null)),
+      cancel: vi.fn(rpc.cancel ?? (async () => {})),
     },
     telegram: vi.fn<TelegramApi>(async () => {}),
   };
   const sent = () => deps.telegram.mock.calls.map(([method, body]) => ({ method, body }));
   const rpcCalls = () => Object.values(deps.rpc).reduce((n, fn) => n + fn.mock.calls.length, 0);
-  return { deps, sent, rpcCalls };
+  // The RPCs called, by name and in order (S-2: telegram_cancel comes first).
+  const rpcOrder = () =>
+    Object.entries(deps.rpc)
+      .flatMap(([name, fn]) => fn.mock.invocationCallOrder.map((order) => [order, name] as const))
+      .sort(([a], [b]) => a - b)
+      .map(([, name]) => name);
+  return { deps, sent, rpcCalls, rpcOrder };
 }
 
 function message(text: string | undefined, type = "private", chat = CHAT) {
@@ -119,16 +131,16 @@ describe("handleUpdate: vincular", () => {
     expect((await reply("/vincular 00000000", invalid)).body.text).toBe(INVALID);
   });
 
-  it("/start sin código → el saludo, sin RPC", async () => {
-    const { body, rpcCalls } = await reply("/start");
+  it("/start sin código → el saludo; solo cancela lo pendiente (S-2)", async () => {
+    const { body, rpcOrder } = await reply("/start");
     expect(body.text).toBe(HELLO);
-    expect(rpcCalls()).toBe(0);
+    expect(rpcOrder()).toEqual(["cancel"]);
   });
 
-  it.each(["/vincular", "/vincular    "])("«%s» → cómo usarlo, sin RPC", async (text) => {
-    const { body, rpcCalls } = await reply(text);
+  it.each(["/vincular", "/vincular    "])("«%s» → cómo usarlo; solo cancela lo pendiente (S-2)", async (text) => {
+    const { body, rpcOrder } = await reply(text);
     expect(body.text).toBe(NO_CODE);
-    expect(rpcCalls()).toBe(0);
+    expect(rpcOrder()).toEqual(["cancel"]);
   });
 });
 
@@ -196,13 +208,19 @@ describe("handleUpdate: /desvincular y /ayuda", () => {
     expect(body.text).toBe("No había ninguna cuenta vinculada.");
   });
 
-  it("/ayuda → la lista de comandos, y cualquier otro texto o comando → la misma lista, sin RPC", async () => {
+  it("/ayuda → la lista con todos los comandos; otro comando → la misma lista tras cancelar lo pendiente; un texto sin nada pendiente → la misma lista", async () => {
     const help = await reply("/ayuda");
-    for (const command of ["/hoy", "/vincular", "/desvincular", "/ayuda"]) expect(help.body.text).toContain(command);
-    for (const text of ["hola, ¿qué tal?", "/inventado", "hoy"]) {
-      const other = await reply(text);
-      expect(other.body.text).toBe(help.body.text);
-      expect(other.rpcCalls()).toBe(0);
+    expect(help.rpcOrder()).toEqual(["cancel"]);
+    for (const command of ["/hoy", "/habitos", "/nuevo", "/ejemplo", "/cancelar", "/vincular", "/desvincular", "/ayuda"]) {
+      expect(String(help.body.text)).toMatch(new RegExp(`${command}(?![a-z])`));
+    }
+    const other = await reply("/inventado");
+    expect(other.body.text).toBe(help.body.text);
+    expect(other.rpcOrder()).toEqual(["cancel"]);
+    for (const text of ["hola, ¿qué tal?", "hoy"]) {
+      const free = await reply(text);
+      expect(free.body.text).toBe(help.body.text);
+      expect(free.rpcOrder()).toEqual(["pendingAction"]);
     }
   });
 });
@@ -641,7 +659,8 @@ describe("handleUpdate: borrar (x: e y:)", () => {
 });
 
 describe("handleUpdate: botones inertes y mal formados", () => {
-  it.each(["n", `r:${ID_A}`])("«%s» (título, L–D, huecos y futuros; renombrar llega en T28) → solo answerCallbackQuery, sin RPC", async (data) => {
+  it("«n» (título, L–D, huecos y futuros) → solo answerCallbackQuery, sin RPC", async () => {
+    const data = "n";
     const { answer, edit, rpcCalls } = await press(data);
     expect(answer).toEqual({ callback_query_id: "cb-1" });
     expect(edit).toBeUndefined();
@@ -652,7 +671,8 @@ describe("handleUpdate: botones inertes y mal formados", () => {
     "h:", "h:no-es-un-uuid", `h:${ID_A}x`, `h:${ID_A}:x`, `H:${ID_A}`, `m:${ID_A}`, `m:${ID_A}:2026-1`, `m:${ID_A}:2026-13`,
     `m:${ID_A}:2026-00`, `m:${ID_A}:2026-11:x`, `m:${ID_A}:2026-11-01`, `d:${ID_A}:2026-11-27`, `d:${ID_A}:2026-11-27:2`,
     `d:${ID_A}:2026-02-30:1`, `d:${ID_A}:20261127:1`, `d:no-es-un-uuid:2026-11-27:1`, `x:${ID_A}:x`, "x:", "y:", `y:${ID_A}x`,
-    "l:x", "s:x", "n:x", `r:${ID_A}:x`, "z", `h:${ID_A}${"x".repeat(64)}`,
+    "l:x", "s:x", "n:x", `r:${ID_A}:x`, "r:", "r:no-es-un-uuid", "z", `h:${ID_A}${"x".repeat(64)}`,
+    "k:pink", "k:", "k", "k:red:x", "K:red", "k:RED", `k:${"red".repeat(30)}`,
   ])("«%s» → ni RPC ni Telegram", async (data) => {
     const t = setup();
     await handleUpdate(callback(data), t.deps);
@@ -665,5 +685,260 @@ describe("handleUpdate: botones inertes y mal formados", () => {
     await handleUpdate(callback(`h:${ID_A}`, "group"), t.deps);
     expect(t.sent()).toEqual([]);
     expect(t.rpcCalls()).toBe(0);
+  });
+});
+
+const ASK_NAME = "Escribe el nombre del hábito nuevo.";
+const EMPTY_NAME = "Escribe un nombre";
+const TOO_LONG = "Máximo 60 caracteres";
+const DUPLICATE = "Ya tienes un hábito con ese nombre.";
+const LIMIT = "Has llegado al máximo de 50 hábitos.";
+const PALETTE = [
+  [
+    { text: "🔴 Rojo", callback_data: "k:red" },
+    { text: "🟠 Naranja", callback_data: "k:orange" },
+    { text: "🟡 Ámbar", callback_data: "k:amber" },
+  ],
+  [
+    { text: "🟢 Verde", callback_data: "k:green" },
+    { text: "🔵 Azul", callback_data: "k:blue" },
+    { text: "🟣 Violeta", callback_data: "k:violet" },
+  ],
+];
+const palette = (name: string) => ({ chat_id: CHAT, text: `Elige un color para «${name}».`, reply_markup: { inline_keyboard: PALETTE } });
+
+describe("handleUpdate: /nuevo", () => {
+  it("/nuevo <nombre> → cancela lo pendiente (S-2), telegram_start_create con el nombre y la paleta de 6 colores", async () => {
+    const { body, deps, rpcOrder } = await reply("/nuevo Leer");
+    expect(rpcOrder()).toEqual(["cancel", "startCreate"]);
+    expect(deps.rpc.startCreate).toHaveBeenCalledWith(CHAT, "Leer");
+    expect(body).toEqual(palette("Leer"));
+  });
+
+  it("S-3: quita los espacios sobrantes del nombre antes de la RPC", async () => {
+    const { body, deps } = await reply("/nuevo    Leer 20 minutos   ");
+    expect(deps.rpc.startCreate).toHaveBeenCalledWith(CHAT, "Leer 20 minutos");
+    expect(body.text).toBe("Elige un color para «Leer 20 minutos».");
+  });
+
+  it("60 caracteres valen; 61 → «Máximo 60 caracteres» sin RPC de crear y sin botones", async () => {
+    expect((await reply(`/nuevo ${"a".repeat(60)}`)).body).toEqual(palette("a".repeat(60)));
+    const { body, deps } = await reply(`/nuevo ${"a".repeat(61)}`);
+    expect(body).toEqual({ chat_id: CHAT, text: TOO_LONG });
+    expect(deps.rpc.startCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["duplicate", DUPLICATE],
+    ["limit", LIMIT],
+    ["not_linked", LINK_FIRST],
+    ["invalid", GENERIC],
+  ])("telegram_start_create → %s: «%s», sin botones", async (result, text) => {
+    const { body } = await reply("/nuevo Leer", { startCreate: async () => result });
+    expect(body).toEqual({ chat_id: CHAT, text });
+  });
+
+  it("/nuevo a secas → telegram_start_create sin nombre y «Escribe el nombre del hábito nuevo.»", async () => {
+    const { body, deps, rpcOrder } = await reply("/nuevo");
+    expect(rpcOrder()).toEqual(["cancel", "startCreate"]);
+    expect(deps.rpc.startCreate).toHaveBeenCalledWith(CHAT, null);
+    expect(body).toEqual({ chat_id: CHAT, text: ASK_NAME });
+  });
+
+  it.each([
+    ["limit", LIMIT],
+    ["not_linked", LINK_FIRST],
+  ])("/nuevo a secas → %s: «%s»", async (result, text) => {
+    expect((await reply("/nuevo", { startCreate: async () => result })).body.text).toBe(text);
+  });
+
+  it("con 'create' pendiente, el texto (trim) es el nombre: telegram_start_create, sin cancelar, y la paleta", async () => {
+    const { body, deps, rpcOrder } = await reply("   Caminar   ", { pendingAction: async () => "create" });
+    expect(rpcOrder()).toEqual(["pendingAction", "startCreate"]);
+    expect(deps.rpc.startCreate).toHaveBeenCalledWith(CHAT, "Caminar");
+    expect(body).toEqual(palette("Caminar"));
+  });
+
+  it.each([
+    ["   ", EMPTY_NAME],
+    ["a".repeat(61), TOO_LONG],
+  ])("con 'create' pendiente, «%s» → el mensaje de la web, sin RPC de crear ni cancelar (sigue esperando)", async (text, error) => {
+    const { body, rpcOrder } = await reply(text, { pendingAction: async () => "create" });
+    expect(body).toEqual({ chat_id: CHAT, text: error });
+    expect(rpcOrder()).toEqual(["pendingAction"]);
+  });
+
+  it("con 'create' pendiente, un duplicado → «Ya tienes un hábito con ese nombre.»", async () => {
+    const { body } = await reply("LEER", { pendingAction: async () => "create", startCreate: async () => "duplicate" });
+    expect(body.text).toBe(DUPLICATE);
+  });
+
+  it("caducado (telegram_pending_action → null): el texto es la ayuda, no un nombre", async () => {
+    const help = (await reply("/ayuda")).body.text;
+    const { body, deps } = await reply("Caminar", { pendingAction: async () => null });
+    expect(body.text).toBe(help);
+    expect(deps.rpc.startCreate).not.toHaveBeenCalled();
+    expect(deps.rpc.renameHabit).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleUpdate: elegir el color (k:)", () => {
+  it.each(["red", "orange", "amber", "green", "blue", "violet"])(
+    "k:%s → telegram_create_habit con el color y edita con «Hábito «<nombre>» creado.» (el más nuevo), sin botones",
+    async (color) => {
+      const { deps, answer, edit } = await press(`k:${color}`, { habits: async () => [LEER, habit(ID_A, "Caminar")] });
+      expect(deps.rpc.createHabit).toHaveBeenCalledWith(CHAT, color);
+      expect(answer).toEqual({ callback_query_id: "cb-1" });
+      expect(edit).toEqual({ chat_id: CHAT, message_id: 42, text: "Hábito «Caminar» creado." });
+    },
+  );
+
+  it.each([
+    ["duplicate", DUPLICATE],
+    ["limit", LIMIT],
+    ["not_linked", LINK_FIRST],
+    ["invalid", GENERIC],
+  ])("telegram_create_habit → %s: «%s» en el callback y no edita", async (result, text) => {
+    const { answer, edit } = await press("k:blue", { createHabit: async () => result });
+    expect(answer).toEqual({ callback_query_id: "cb-1", text });
+    expect(edit).toBeUndefined();
+  });
+
+  it("sin nada pendiente (no_pending, también el segundo de un doble toque) → lo dice en el callback y no edita", async () => {
+    const { answer, edit } = await press("k:blue", { createHabit: async () => "no_pending" });
+    expect(answer).toEqual({ callback_query_id: "cb-1", text: "No hay ningún hábito por crear. Envía /nuevo." });
+    expect(edit).toBeUndefined();
+  });
+
+  it("los botones de la paleta caben en 64 bytes", async () => {
+    for (const b of PALETTE.flat()) expect(Buffer.byteLength(b.callback_data)).toBeLessThanOrEqual(64);
+  });
+});
+
+describe("handleUpdate: renombrar (r:)", () => {
+  it("r:<id> → telegram_start_rename y edita con «Escribe el nuevo nombre de «<nombre>».», sin botones", async () => {
+    const { deps, answer, edit } = await press(`r:${ID_A}`, { habits: both });
+    expect(deps.rpc.startRename).toHaveBeenCalledWith(CHAT, ID_A);
+    expect(answer).toEqual({ callback_query_id: "cb-1" });
+    expect(edit).toEqual({ chat_id: CHAT, message_id: 42, text: "Escribe el nuevo nombre de «Agua»." });
+  });
+
+  it.each([
+    ["not_found", GONE],
+    ["not_linked", LINK_FIRST],
+  ])("telegram_start_rename → %s: «%s» en el callback y no edita", async (result, text) => {
+    const { answer, edit } = await press(`r:${ID_A}`, { startRename: async () => result });
+    expect(answer).toEqual({ callback_query_id: "cb-1", text });
+    expect(edit).toBeUndefined();
+  });
+
+  it("ok pero el hábito se borró justo después → «Ese hábito ya no existe.»", async () => {
+    const { answer, edit } = await press(`r:${ID_A}`, { habits: async () => [LEER] });
+    expect(answer).toEqual({ callback_query_id: "cb-1", text: GONE });
+    expect(edit).toBeUndefined();
+  });
+
+  it("con 'rename' pendiente, el texto (trim) es el nombre nuevo: telegram_rename_habit, sin cancelar, «Hábito renombrado a «<nuevo>».»", async () => {
+    const { body, deps, rpcOrder } = await reply("  Leer más  ", { pendingAction: async () => "rename" });
+    expect(rpcOrder()).toEqual(["pendingAction", "renameHabit"]);
+    expect(deps.rpc.renameHabit).toHaveBeenCalledWith(CHAT, "Leer más");
+    expect(body).toEqual({ chat_id: CHAT, text: "Hábito renombrado a «Leer más»." });
+  });
+
+  it.each([
+    ["   ", EMPTY_NAME],
+    ["a".repeat(61), TOO_LONG],
+  ])("con 'rename' pendiente, «%s» → el mensaje de la web, sin RPC de renombrar (sigue esperando)", async (text, error) => {
+    const { body, rpcOrder } = await reply(text, { pendingAction: async () => "rename" });
+    expect(body).toEqual({ chat_id: CHAT, text: error });
+    expect(rpcOrder()).toEqual(["pendingAction"]);
+  });
+
+  it.each([
+    ["duplicate", DUPLICATE],
+    ["not_found", GONE],
+    ["not_linked", LINK_FIRST],
+    ["invalid", GENERIC],
+  ])("telegram_rename_habit → %s: «%s»", async (result, text) => {
+    const { body } = await reply("Leer más", { pendingAction: async () => "rename", renameHabit: async () => result });
+    expect(body).toEqual({ chat_id: CHAT, text });
+  });
+
+  it("no_pending (caducó entre medias) → la ayuda", async () => {
+    const help = (await reply("/ayuda")).body.text;
+    const { body } = await reply("Leer más", { pendingAction: async () => "rename", renameHabit: async () => "no_pending" });
+    expect(body.text).toBe(help);
+  });
+});
+
+describe("handleUpdate: /ejemplo y /cancelar", () => {
+  it.each([
+    ["ok", "Datos de ejemplo cargados."],
+    ["not_empty", "Ya tienes hábitos: los datos de ejemplo solo se cargan en una cuenta vacía."],
+    ["not_linked", LINK_FIRST],
+  ])("/ejemplo → cancela (S-2) y telegram_load_sample → %s: «%s»", async (result, text) => {
+    const { body, rpcOrder } = await reply("/ejemplo", { loadSample: async () => result });
+    expect(rpcOrder()).toEqual(["cancel", "loadSample"]);
+    expect(body).toEqual({ chat_id: CHAT, text });
+  });
+
+  it.each([
+    ["create", "Cancelado."],
+    ["rename", "Cancelado."],
+    [null, "No había nada que cancelar."],
+  ])("/cancelar con %s pendiente → mira lo pendiente, lo borra y «%s»", async (pending, text) => {
+    const { body, rpcOrder } = await reply("/cancelar", { pendingAction: async () => pending });
+    expect(rpcOrder()).toEqual(["pendingAction", "cancel"]);
+    expect(body).toEqual({ chat_id: CHAT, text });
+  });
+});
+
+describe("handleUpdate: S-2 (cualquier comando cancela lo pendiente antes de ejecutarse)", () => {
+  it.each(["/start AB12CD34", "/vincular AB12CD34", "/hoy", "/habitos", "/desvincular", "/ayuda", "/inventado", "/nuevo", "/nuevo Leer", "/ejemplo"])(
+    "«%s» → telegram_cancel es la primera RPC y nunca se llama a telegram_pending_action ni se renombra",
+    async (text) => {
+      const { rpcOrder, deps } = await reply(text, { pendingAction: async () => "rename" });
+      expect(rpcOrder()[0]).toBe("cancel");
+      expect(deps.rpc.pendingAction).not.toHaveBeenCalled();
+      expect(deps.rpc.renameHabit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("si telegram_cancel falla, el comando no se ejecuta: el genérico", async () => {
+    const { body, deps } = await reply("/nuevo Leer", { cancel: async () => Promise.reject(new BotRpcError()) });
+    expect(body).toEqual({ chat_id: CHAT, text: GENERIC });
+    expect(deps.rpc.startCreate).not.toHaveBeenCalled();
+  });
+
+  it("en un grupo, /nuevo, /ejemplo y /cancelar → «Úsame en un chat privado.», sin RPC", async () => {
+    for (const text of ["/nuevo Leer", "/nuevo", "/ejemplo", "/cancelar"]) {
+      const t = setup();
+      await handleUpdate(message(text, "group", -100), t.deps);
+      expect(t.rpcCalls()).toBe(0);
+      expect(t.sent()).toEqual([{ method: "sendMessage", body: { chat_id: -100, text: "Úsame en un chat privado." } }]);
+    }
+  });
+});
+
+describe("handleUpdate: S-1 en T28", () => {
+  const fail = async () => Promise.reject(new BotRpcError());
+
+  it.each(["/nuevo Leer", "/nuevo", "/ejemplo", "/cancelar", "Leer"])("una RPC falla en «%s» → el genérico", async (text) => {
+    const { body } = await reply(text, { startCreate: fail, loadSample: fail, pendingAction: fail });
+    expect(body).toEqual({ chat_id: CHAT, text: GENERIC });
+  });
+
+  it.each([
+    ["create", { startCreate: fail }],
+    ["rename", { renameHabit: fail }],
+  ] as const)("con '%s' pendiente, falla la RPC del nombre → el genérico", async (pending, rpc) => {
+    const { body } = await reply("Leer", { pendingAction: async () => pending, ...rpc });
+    expect(body).toEqual({ chat_id: CHAT, text: GENERIC });
+  });
+
+  it.each(["k:red", `r:${ID_A}`])("una RPC falla en el botón «%s» → el callback dice el genérico y no edita", async (data) => {
+    const t = setup({ createHabit: fail, startRename: fail, habits: fail });
+    await handleUpdate(callback(data), t.deps);
+    expect(t.sent()).toEqual([{ method: "answerCallbackQuery", body: { callback_query_id: "cb-1", text: GENERIC } }]);
   });
 });

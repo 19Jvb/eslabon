@@ -59,7 +59,7 @@ Cada directriz tiene un **ID estable**: nunca se renumera; si se retira, se marc
 ### Corrección
 | ID | Directriz | Cómo se verifica |
 |---|---|---|
-| **D-08** | Fechas: un día es `'YYYY-MM-DD'`. El «hoy» del usuario sale solo de `todayIn(tz)` (`src/lib/dates.ts`): fuera de ese archivo, `new Date()` y `Date.now()` solo valen para timestamps. El servidor rechaza días futuros o de hace más de 6 días. | comando `D-08` → cada aparición justificada + test del rango permitido |
+| **D-08** | Fechas: un día es `'YYYY-MM-DD'`. El «hoy» del usuario sale solo de `todayIn(tz)` (`src/lib/dates.ts`): fuera de ese archivo, `new Date()` y `Date.now()` solo valen para timestamps. El servidor rechaza días futuros o anteriores a `EARLIEST_DAY` (2000-01-01, la misma fecha que la política de `check_ins` en SQL). | comando `D-08` → cada aparición justificada + test del rango permitido |
 | **D-09** | La lógica de `src/lib/` tiene tests unitarios con casos límite: fin de mes y de año, 29 de febrero, cambio de horario en `Europe/Madrid`, conjunto vacío y entrada duplicada o desordenada. Cada fallo de lógica que detectes deja un test de regresión. | Lectura de los `*.test.ts`: si falta un caso pertinente, es un fallo. En la ronda ≥ 2, el test de regresión existe y pasa |
 | **D-10** | Robustez de la interacción: cada acción muestra un estado de envío, deshabilita su botón mientras envía (el doble clic no duplica), muestra el error en español y la UI optimista vuelve atrás si falla. | E2E: doble clic → un solo registro. Error simulado con `page.route` sobre las peticiones con cabecera `next-action` respondiendo 500 → la UI vuelve al estado anterior y aparece el mensaje |
 

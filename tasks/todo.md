@@ -275,7 +275,7 @@
   - `telegram_load_sample(p_secret, p_chat_id)` → 'ok' | 'not_linked' | 'not_empty'. Reutiliza la lógica de `load_sample_data` sin duplicarla: se extrae a una función privada que reciben las dos.
   - Al desvincular o volver a vincular, se borra la acción pendiente del chat.
   - Fase A en PGlite: aislamiento (nada sobre hábitos de otro usuario ni sin vínculo), secreto obligatorio, límite de 50 también con inserts simultáneos, unicidad y validación del nombre, rango de días, caducidad de lo pendiente, idempotencia y mutaciones. Fase B contra el alojado tras el `db push` con el OK del humano.
-- [ ] **T27: El bot ve y marca todo (la aceptación va primero, con el simulador):**
+- [x] **T27: El bot ve y marca todo (la aceptación va primero, con el simulador):**
   - `/habitos`: un mensaje con cada hábito y sus estadísticas («Racha actual», «Mejor racha», «Últimos 30 días») y un botón por hábito que abre su menú. Sin hábitos: el texto de la web y un botón «Cargar datos de ejemplo».
   - Menú del hábito (edita el mensaje): el nombre, sus estadísticas y los botones «📅 Historial», «✏️ Renombrar», «🗑️ Borrar» y «⬅️ Volver».
   - Historial: calendario mensual en el teclado en línea (fila de navegación «‹» / «Noviembre de 2026» / «›», fila L M X J V S D, un botón por día). Pulsar un día pasado o de hoy lo marca o desmarca y edita el mensaje; los días marcados se distinguen a simple vista; los futuros y los huecos no hacen nada. Navegación entre 2000-01 y el mes de hoy del vínculo.
@@ -288,4 +288,4 @@
   - `/ejemplo`: carga los datos de ejemplo si la cuenta está vacía.
   - Heredado de T26-r1: S-2 cualquier comando cancela lo pendiente (`telegram_cancel`) antes de ejecutarse, para que un texto posterior no renombre un hábito de una acción anterior; S-3 el bot hace `trim()` del nombre antes de mandarlo (la BD solo quita espacios con `btrim`).
   - `/cancelar` y `/ayuda` (con la lista completa de comandos). El Orquestador actualiza los comandos del bot (`setMyCommands`) con el OK del humano.
-- [ ] **T29: Puesta en producción y documentación del bot completo:** el `db push` (OK del humano), el despliegue, la prueba contra producción, `setMyCommands` y la sección del bot del README (los avisos de `db advisors` pasan de 8 a 18: 15 RPC del bot para anon, 2 para authenticated y leaked password).
+- [ ] **T29: Puesta en producción y documentación del bot completo:** el `db push` (OK del humano), el despliegue, la prueba contra producción, `setMyCommands` y la sección del bot del README; en la prueba real, comprobar que «✅18» y «(27)» caben sin recortarse en las 7 columnas del calendario (de T27-r2; si no, una forma más corta que conserve el número, p. ej. «18✓») (los avisos de `db advisors` pasan de 8 a 18: 15 RPC del bot para anon, 2 para authenticated y leaked password).

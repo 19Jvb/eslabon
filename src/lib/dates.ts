@@ -77,6 +77,9 @@ export function addMonths(month: string, n: number): string {
   return new Date(Date.UTC(year, m - 1 + n, 1)).toISOString().slice(0, 7);
 }
 
+// The column headers of monthWeeks.
+export const WEEKDAY_LETTERS = ["L", "M", "X", "J", "V", "S", "D"];
+
 // The month's weeks, Monday to Sunday, with null for the days of the neighbouring months.
 export function monthWeeks(month: string): (Day | null)[][] {
   const first = `${month}-01`;

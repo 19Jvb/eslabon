@@ -1,8 +1,9 @@
 import { createServer, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import { expect, type APIRequestContext, type APIResponse } from "@playwright/test";
-import { type SupabaseClient } from "@supabase/supabase-js";
-import { MADRID, apiClient, cleanUp, env, marked, prefix, seed, test, wipeAll } from "./helpers";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { EARLIEST_DAY, EARLIEST_MONTH, addDays } from "../src/lib/dates";
+import { MADRID, apiClient, cleanUp, dayAt, env, expectedStats, mark, marked, prefix, seed, test, wipeAll } from "./helpers";
 
 // T19: POST /api/telegram/webhook, de punta a punta, con el usuario de E2E (la demo no se toca).
 // Montaje: este archivo arranca un simulador de la API de Telegram en TELEGRAM_API_BASE (playwright.config.ts la fija a
@@ -11,6 +12,7 @@ import { MADRID, apiClient, cleanUp, env, marked, prefix, seed, test, wipeAll } 
 // Los chats son ficticios, grandes y aleatorios. Ni el token ni el secreto se imprimen nunca: se comparan con booleanos.
 // Fuera de alcance aquí (revisión por inspección): 503 sin TELEGRAM_WEBHOOK_SECRET (exige otro servidor), la
 // comparación en tiempo constante, que no se use service_role y que handleUpdate tenga sus tests unitarios.
+// T27 (al final del archivo): /habitos, el menú de cada hábito, el calendario del historial y borrar, con el mismo simulador.
 
 const HOOK = "/api/telegram/webhook";
 const HEADER = "X-Telegram-Bot-Api-Secret-Token";
@@ -243,6 +245,11 @@ test.afterEach(async ({ api }) => {
   // Todas las llamadas a Telegram: a la URL con el token y en texto plano.
   expect(calls.filter((c) => !c.tokenOk).map((c) => c.method), "llamadas sin /bot<TOKEN>/ en la ruta").toEqual([]);
   expect(calls.filter((c) => "parse_mode" in c.body).map((c) => c.method), "llamadas con parse_mode").toEqual([]);
+  // T27: ningún botón pasa de 64 bytes y nada de lo que dice el bot lleva un error crudo de la BD ni un estado de una RPC.
+  const long = calls.flatMap((c) => buttons(c.body)).filter((b) => Buffer.byteLength(b.callback_data ?? "") > 64);
+  expect(long, "callback_data de más de 64 bytes").toEqual([]);
+  const said = calls.flatMap((c) => (typeof c.body.text === "string" ? [c.body.text] : []));
+  expect(said.filter((t) => RAW.test(t)), "textos con el error crudo o el estado de la RPC").toEqual([]);
 });
 
 // ---------- Tests ----------
@@ -455,7 +462,7 @@ test.describe("chats que no son privados", () => {
     test(`un chat «${type}» no procesa comandos: /start <código> no vincula y, si responde, es «${PRIVATE_ONLY}»`, async ({ request, api }) => {
       const code = await newCode(api);
       const group = -(1_000_000_000_000 + Math.floor(Math.random() * 1_000_000_000));
-      for (const text of [`/start ${code}`, "/hoy", "/ayuda"]) {
+      for (const text of [`/start ${code}`, "/hoy", "/habitos", "/ayuda"]) {
         const res = await post(request, message(group, text, type));
         expect(res.status(), `${type} «${text.split(" ")[0]}» → 200`).toBe(200);
       }
@@ -503,3 +510,468 @@ async function edited(chat: number, n: number) {
   await expect.poll(() => sentTo(chat, "editMessageText").length, { message: `editMessageText (${n})` }).toBeGreaterThanOrEqual(n);
   return sentTo(chat, "editMessageText")[n - 1].body;
 }
+
+// ---------- T27: el bot ve y marca todo ----------
+// Contrato que fijan estos tests (texto plano; callback_data ≤ 64 bytes):
+//   /habitos            → «Tus hábitos:» + un bloque por hábito (statsBlock) y un botón «<nombre>» → h:<id> por hábito.
+//                          Sin hábitos: un texto que empieza por «Aún no tienes hábitos.» y un solo botón «Cargar datos de ejemplo» → s.
+//   h:<id>              → menú: statsBlock y «📅 Historial» m:<id>:<YYYY-MM de hoy> · «✏️ Renombrar» r:<id> · «🗑️ Borrar» x:<id> · «⬅️ Volver» l.
+//   l                   → la lista.   s → telegram_load_sample y la lista.
+//   m:<id>:<YYYY-MM>    → calendario: texto statsBlock; fila «‹» m:<id>:<mes anterior> / «<Mes> de <año>» / «›» m:<id>:<mes siguiente>
+//                          (ningún botón lleva fuera de 2000-01…mes de hoy); fila L M X J V S D; semanas de 7 botones de lunes a
+//                          domingo; día pasado o de hoy → d:<id>:<YYYY-MM-DD>:<1 marcar | 0 desmarcar>, siempre con su número y,
+//                          si está marcado, además «✅» (T27-r1 F-1); huecos y futuros sin d: (no hacen nada); debajo, «⬅️ Volver» → h:<id>.
+//   d:<id>:<día>:<1|0>  → «Marcado» / «Desmarcado» y edita el calendario (con las estadísticas al día).
+//   x:<id>              → «¿Borrar «<nombre>» y todo su historial?» con «Sí, borrar» y:<id> y «Cancelar» h:<id>.
+//   y:<id>              → borra y edita con la lista (o con el estado vacío).
+//   habit_id ajeno o borrado → answerCallbackQuery «Ese hábito ya no existe.» y nada cambia. Mal formada → 200, sin editar ni enviar.
+
+const GONE = "Ese hábito ya no existe.";
+const LIST_HEADER = "Tus hábitos:";
+const EMPTY_LIST = "Aún no tienes hábitos.";
+const SAMPLE = "Cargar datos de ejemplo";
+const SAMPLE_NAMES = ["Beber 2 litros de agua", "Caminar 30 minutos", "Leer 20 minutos"];
+const WEEK = ["L", "M", "X", "J", "V", "S", "D"];
+/** Errores crudos de PostgREST/Postgres y estados de las RPC que nunca deben llegar al usuario (S-1 de T26-r1). */
+const RAW = /violates|duplicate key|invalid input|syntax error|constraint|PGRST|\b(?:22|23|42|P0)[0-9A-Z]{3}\b|not_linked|not_found|out_of_range|no_pending|not_empty/i;
+
+const menuButtons = (id: string, month: string) => [
+  { text: "📅 Historial", callback_data: `m:${id}:${month}` },
+  { text: "✏️ Renombrar", callback_data: `r:${id}` },
+  { text: "🗑️ Borrar", callback_data: `x:${id}` },
+  { text: "⬅️ Volver", callback_data: "l" },
+];
+
+type BotHabit = { habit_id: string; name: string; color: string; days: string[]; today: string };
+
+/** Lo que ve el bot (telegram_habits, aprobada en T26): los hábitos en el orden de la web, sus días y el «hoy» del vínculo. */
+async function botHabits(chat: number) {
+  const { data, error } = await apiClient().rpc("telegram_habits", { p_secret: env("TELEGRAM_WEBHOOK_SECRET"), p_chat_id: chat });
+  if (error) throw new Error(`telegram_habits falló: ${error.code} ${error.message}`);
+  return data as BotHabit[];
+}
+const habitRow = async (chat: number, id: string) => (await botHabits(chat)).find((r) => r.habit_id === id)!;
+
+/** El espacio duro vale como espacio. */
+const plain = (text: unknown) => String(text ?? "").replace(/\u00a0/g, " ");
+/** «<nombre>\nRacha actual: 3 días\nMejor racha: 5 días\nÚltimos 30 días: 27 %», con src/lib/streak.ts como la web. */
+const statsBlock = (name: string, marks: string[], today: string) =>
+  [name, ...Object.entries(expectedStats(marks, today)).map(([k, v]) => `${k}: ${v}`)].join("\n");
+
+const keyboard = (body: Body): Button[][] =>
+  ((body.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard ?? []).map((row) =>
+    row.map(({ text, callback_data }) => ({ text, callback_data })),
+  );
+
+const shiftMonth = (month: string, n: number) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
+};
+const daysIn = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+};
+const iso = (month: string, d: number) => `${month}-${String(d).padStart(2, "0")}`;
+const monthName = (month: string) =>
+  new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+/** «Noviembre de 2026». */
+const monthTitle = (month: string) => {
+  const name = monthName(month);
+  return `${name[0].toUpperCase()}${name.slice(1)} de ${month.slice(0, 4)}`;
+};
+/** Las celdas del mes de lunes a domingo: null es un hueco. */
+function monthCells(month: string) {
+  const offset = (new Date(`${month}-01T00:00:00Z`).getUTCDay() + 6) % 7;
+  const cells: (number | null)[] = [...Array<null>(offset).fill(null), ...Array.from({ length: daysIn(month) }, (_, i) => i + 1)];
+  while (cells.length % 7) cells.push(null);
+  return cells;
+}
+/** Los títulos de mes que enseñan las ediciones posteriores a la n.º `from`. */
+const titlesAfter = (chat: number, from: number) =>
+  sentTo(chat, "editMessageText").slice(from).flatMap((e) => keyboard(e.body)[0]?.map((b) => b.text) ?? []);
+
+function expectList(body: Body, rows: BotHabit[]) {
+  expect(plain(body.text), "el texto de la lista").toBe([LIST_HEADER, ...rows.map((r) => statsBlock(r.name, r.days, r.today))].join("\n\n"));
+  expect(buttons(body), "un botón por hábito, en el orden de la web").toEqual(rows.map((r) => ({ text: r.name, callback_data: `h:${r.habit_id}` })));
+}
+
+function expectMenu(body: Body, row: BotHabit) {
+  expect(plain(body.text), "el texto del menú").toBe(statsBlock(row.name, row.days, row.today));
+  expect(buttons(body), "los botones del menú").toEqual(menuButtons(row.habit_id, row.today.slice(0, 7)));
+}
+
+function expectCalendar(body: Body, row: BotHabit, month: string) {
+  const { habit_id: id, today } = row;
+  const current = today.slice(0, 7);
+  const kb = keyboard(body);
+  const at = `calendario de ${month}`;
+  expect(plain(body.text), `${at}: el nombre y las estadísticas al día`).toBe(statsBlock(row.name, row.days, today));
+  const nav = kb[0] ?? [];
+  expect(nav.map((b) => b.text), `${at}: la fila de navegación tiene el título`).toContain(monthTitle(month));
+  if (month > EARLIEST_MONTH) expect(nav.find((b) => b.text === "‹")?.callback_data, `${at}: «‹»`).toBe(`m:${id}:${shiftMonth(month, -1)}`);
+  if (month < current) expect(nav.find((b) => b.text === "›")?.callback_data, `${at}: «›»`).toBe(`m:${id}:${shiftMonth(month, 1)}`);
+  const targets = kb.flat().flatMap((b) => b.callback_data.match(/^m:[^:]+:(\d{4}-\d{2})$/)?.slice(1) ?? []);
+  expect(targets.filter((m) => m < EARLIEST_MONTH || m > current), `${at}: ningún botón lleva fuera de 2000-01…${current}`).toEqual([]);
+  expect(kb[1]?.map((b) => b.text), `${at}: la fila de los días de la semana`).toEqual(WEEK);
+  const cells = monthCells(month);
+  const weeks = kb.slice(2, 2 + cells.length / 7);
+  expect(weeks.map((w) => w.length), `${at}: ${cells.length / 7} semanas de 7 botones`).toEqual(Array(cells.length / 7).fill(7));
+  weeks.flat().forEach((b, i) => {
+    const d = cells[i];
+    if (d === null) {
+      expect(b.text, `${at}: hueco n.º ${i} sin número`).not.toMatch(/\d|✅/);
+      expect(b.callback_data, `${at}: hueco n.º ${i} no marca`).not.toMatch(/^d:/);
+      return;
+    }
+    const day = iso(month, d);
+    if (day > today) {
+      expect(b.callback_data, `${day} es futuro: no marca`).not.toMatch(/^d:/);
+      expect(b.text, `${day} es futuro`).not.toContain("✅");
+      return;
+    }
+    const done = row.days.includes(day);
+    expect(b.callback_data, day).toBe(`d:${id}:${day}:${done ? 0 : 1}`);
+    if (done) {
+      expect(b.text, `${day} marcado`).toContain("✅");
+      // T27-r1 F-1: el marcado conserva su número, como en la web; si no, una semana entera de «✅» no dice qué día es cada uno.
+      expect(b.text, `${day} marcado con su número`).toMatch(new RegExp(`(^|\\D)${d}(\\D|$)`));
+    } else if (day === today) {
+      expect(b.text, `${day} (hoy) sin marcar`).not.toContain("✅");
+      expect(b.text, `${day} (hoy) con su número`).toMatch(new RegExp(`(^|\\D)${d}(\\D|$)`));
+    } else expect(b.text, `${day} sin marcar: su número`).toBe(String(d));
+  });
+  expect(kb.slice(2 + cells.length / 7).flat(), `${at}: «⬅️ Volver» al menú`).toContainEqual({ text: "⬅️ Volver", callback_data: `h:${id}` });
+}
+
+/** Pulsa un botón: 200, espera su answerCallbackQuery y da cómo esperar la edición del mismo mensaje. */
+async function press(request: APIRequestContext, chat: number, data: string, messageId: number) {
+  const before = sentTo(chat, "editMessageText").length;
+  const cb = callback(chat, data, messageId);
+  expect((await post(request, cb.update)).status(), `«${data}» → 200`).toBe(200);
+  const answer = await answered(cb.id);
+  return {
+    answer,
+    before,
+    edit: async () => {
+      const body = await edited(chat, before + 1);
+      expect(Number(body.message_id), `«${data}» edita el mismo mensaje`).toBe(messageId);
+      return body;
+    },
+  };
+}
+
+/** Manda un callback sin esperar respuesta (puede ignorarse) y devuelve cuántas ediciones había antes. */
+async function pressRaw(request: APIRequestContext, chat: number, data: string, messageId: number) {
+  const before = sentTo(chat, "editMessageText").length;
+  expect((await post(request, callback(chat, data, messageId).update)).status(), `«${data}» → 200`).toBe(200);
+  return before;
+}
+
+async function expectNoEdit(chat: number, before: number, what: string) {
+  await settle();
+  expect(sentTo(chat, "editMessageText").length, `${what}: no edita el mensaje`).toBe(before);
+}
+
+/** Siembra hábitos «e2e-…-<sufijo>», vincula un chat nuevo y devuelve el «hoy» del vínculo. */
+async function linkedWith(request: APIRequestContext, api: SupabaseClient, ...suffixes: string[]) {
+  const p = prefix();
+  const names = suffixes.map((s) => `${p}-${s}`);
+  const ids = await seed(api, ...names.map((name) => ({ name })));
+  const chat = await linkChat(request, api);
+  const today = (await botHabits(chat))[0].today;
+  return { chat, ids, names, today, current: today.slice(0, 7) };
+}
+
+/** /habitos y el message_id del mensaje con el teclado. */
+async function openList(request: APIRequestContext, chat: number) {
+  const body = await ask(request, chat, "/habitos");
+  return { body, messageId: messageIdOf(body) };
+}
+
+/** Hábitos y días del usuario de E2E, para comprobar que algo no cambia. */
+async function snapshot(api: SupabaseClient) {
+  const h = await api.from("habits").select("id, name, color").order("id");
+  const c = await api.from("check_ins").select("habit_id, day").order("habit_id").order("day");
+  if (h.error || c.error) throw new Error(`No se pudo leer: ${h.error?.message ?? c.error?.message}`);
+  return JSON.stringify([h.data, c.data]);
+}
+
+test.describe("T27: /habitos y el menú del hábito", () => {
+  test("sin vínculo, /habitos → «Primero vincula tu cuenta…» sin botones", async ({ request }) => {
+    const body = await ask(request, fakeChat(), "/habitos");
+    expect(body.text).toBe(LINK_FIRST);
+    expect(buttons(body)).toEqual([]);
+  });
+
+  test("sin hábitos → «Aún no tienes hábitos.…» y un solo botón «Cargar datos de ejemplo» (s); pulsarlo carga los 3 de ejemplo y edita el mensaje con la lista; pulsarlo otra vez no duplica", async ({ request, api }) => {
+    await wipeAll(api);
+    try {
+      const chat = await linkChat(request, api);
+      const { body, messageId } = await openList(request, chat);
+      expect(plain(body.text).startsWith(EMPTY_LIST), `«${body.text}» empieza por «${EMPTY_LIST}»`).toBe(true);
+      expect(buttons(body)).toEqual([{ text: SAMPLE, callback_data: "s" }]);
+      const list = await (await press(request, chat, "s", messageId)).edit();
+      const rows = await botHabits(chat);
+      expect(rows.map((r) => r.name).sort(), "los 3 hábitos de ejemplo").toEqual(SAMPLE_NAMES);
+      expectList(list, rows);
+      await press(request, chat, "s", messageId);
+      await settle();
+      expect(await botHabits(chat), "un segundo toque no carga otra vez").toHaveLength(3);
+    } finally {
+      await wipeAll(api);
+    }
+  });
+
+  test("con 2 hábitos → «Tus hábitos:» y, por hábito, su nombre literal con «Racha actual», «Mejor racha» y «Últimos 30 días» como la web (hoy del vínculo), y un botón «<nombre>» → h:<id> en el orden de la web", async ({ request, api }) => {
+    const { chat, ids: [a, b], today } = await linkedWith(request, api, "<b>*_[x](y)", "normal");
+    await mark(api, a, ...[1, 2, 3, 10, 11, 12, 13, 14].map((n) => addDays(today, -n)));
+    await mark(api, b, today);
+    const { body } = await openList(request, chat);
+    const rows = await botHabits(chat);
+    expect(rows.map((r) => r.habit_id)).toEqual([a, b]);
+    expect(rows[0].days).toEqual(await marked(api, a));
+    expectList(body, rows);
+    expect(plain(body.text), "sanidad: la racha actual de a").toContain("Racha actual: 3 días");
+    expect(plain(body.text), "sanidad: la mejor racha de a").toContain("Mejor racha: 5 días");
+  });
+
+  test("h:<id> edita el mensaje con el menú: el nombre, sus estadísticas y «📅 Historial» (m:<id>:<mes de hoy>), «✏️ Renombrar» (r:<id>), «🗑️ Borrar» (x:<id>) y «⬅️ Volver» (l); «⬅️ Volver» vuelve a la lista", async ({ request, api }) => {
+    const { chat, ids: [a], today } = await linkedWith(request, api, "menu", "otro");
+    await mark(api, a, today, addDays(today, -1));
+    const { messageId } = await openList(request, chat);
+    expectMenu(await (await press(request, chat, `h:${a}`, messageId)).edit(), await habitRow(chat, a));
+    expectList(await (await press(request, chat, "l", messageId)).edit(), await botHabits(chat));
+  });
+});
+
+test.describe("T27: historial", () => {
+  test("📅 Historial → el mes de hoy: «‹» / «<Mes> de <año>», fila L M X J V S D, un botón por día en su columna (✅ los marcados), futuros y huecos sin marcar y «⬅️ Volver»; «›» no pasa del mes de hoy; «‹» abre el mes anterior; «⬅️ Volver» vuelve al menú", async ({ request, api }) => {
+    const { chat, ids: [id], today, current } = await linkedWith(request, api, "cal");
+    const previous = shiftMonth(current, -1);
+    await mark(api, id, ...new Set([today, `${current}-01`, `${previous}-15`]));
+    const { messageId } = await openList(request, chat);
+    const menu = await (await press(request, chat, `h:${id}`, messageId)).edit();
+    const historial = buttons(menu).find((b) => b.text === "📅 Historial")!;
+    let row = await habitRow(chat, id);
+    const cal = await (await press(request, chat, historial.callback_data, messageId)).edit();
+    expectCalendar(cal, row, current);
+
+    const next = keyboard(cal)[0].find((b) => b.text === "›");
+    if (next) {
+      const before = await pressRaw(request, chat, next.callback_data, messageId);
+      await settle();
+      expect(titlesAfter(chat, before), "«›» en el mes de hoy no avanza").not.toContain(monthTitle(shiftMonth(current, 1)));
+    }
+
+    const back = await (await press(request, chat, keyboard(cal)[0].find((b) => b.text === "‹")!.callback_data, messageId)).edit();
+    row = await habitRow(chat, id);
+    expectCalendar(back, row, previous);
+    const volver = keyboard(back).flat().find((b) => b.text === "⬅️ Volver")!;
+    expectMenu(await (await press(request, chat, volver.callback_data, messageId)).edit(), row);
+  });
+
+  test("pulsar un día pasado o el de hoy lo marca («Marcado») y otra vez lo desmarca («Desmarcado»): edita el calendario con «✅» y las estadísticas, y la BD cambia; repetir el toque no duplica", async ({ request, api }) => {
+    const { chat, ids: [id], today, current } = await linkedWith(request, api, "marcar");
+    const previous = shiftMonth(current, -1);
+    const day = `${previous}-10`;
+    const { messageId } = await openList(request, chat);
+    await (await press(request, chat, `m:${id}:${previous}`, messageId)).edit();
+
+    for (let i = 0; i < 2; i++) {
+      const tap = await press(request, chat, `d:${id}:${day}:1`, messageId);
+      expect(tap.answer.text).toBe("Marcado");
+      expectCalendar(await tap.edit(), await habitRow(chat, id), previous);
+    }
+    expect(await marked(api, id), "un solo check-in").toEqual([day]);
+    const unmark = await press(request, chat, `d:${id}:${day}:0`, messageId);
+    expect(unmark.answer.text).toBe("Desmarcado");
+    expectCalendar(await unmark.edit(), await habitRow(chat, id), previous);
+    expect(await marked(api, id)).toEqual([]);
+
+    await (await press(request, chat, `m:${id}:${current}`, messageId)).edit();
+    const hoy = await press(request, chat, `d:${id}:${today}:1`, messageId);
+    expect(hoy.answer.text).toBe("Marcado");
+    const cal = await hoy.edit();
+    expectCalendar(cal, await habitRow(chat, id), current);
+    expect(plain(cal.text), "la racha cuenta el día de hoy").toContain("Racha actual: 1 día");
+    expect(await marked(api, id)).toEqual([today]);
+  });
+
+  test("días futuros, huecos, el título y L M X J V S D no hacen nada (answerCallbackQuery, sin editar ni check-in); d: con mañana o con 1999-12-31 tampoco", async ({ request, api }) => {
+    const { chat, ids: [id], today, current } = await linkedWith(request, api, "nada");
+    const { messageId } = await openList(request, chat);
+    const cal = await (await press(request, chat, `m:${id}:${current}`, messageId)).edit();
+    const kb = keyboard(cal);
+    const inert = new Set(
+      [...kb[0].filter((b) => b.text === monthTitle(current)), ...kb[1], ...kb.slice(2).flat().filter((b) => !/^[dmh]:/.test(b.callback_data))]
+        .map((b) => b.callback_data),
+    );
+    for (const data of inert) {
+      const { before } = await press(request, chat, data, messageId);
+      await expectNoEdit(chat, before, `«${data}»`);
+    }
+    for (const data of [`d:${id}:${addDays(today, 1)}:1`, `d:${id}:1999-12-31:1`]) {
+      await expectNoEdit(chat, await pressRaw(request, chat, data, messageId), `«${data}»`);
+    }
+    expect(await marked(api, id)).toEqual([]);
+  });
+
+  test("navegación entre 2000-01 y el mes de hoy: m:<id>:2000-01 → «Enero de 2000» sin «‹» que retroceda y su 1 de enero se marca; m:<id>:1999-12 y el mes siguiente al de hoy no se muestran", async ({ request, api }) => {
+    const { chat, ids: [id], current } = await linkedWith(request, api, "limites");
+    const { messageId } = await openList(request, chat);
+    const first = await (await press(request, chat, `m:${id}:${EARLIEST_MONTH}`, messageId)).edit();
+    expectCalendar(first, await habitRow(chat, id), EARLIEST_MONTH);
+
+    const forbidden = [monthTitle("1999-12"), monthTitle(shiftMonth(current, 1))];
+    const prev = keyboard(first)[0].find((b) => b.text === "‹");
+    for (const data of [...(prev ? [prev.callback_data] : []), `m:${id}:1999-12`, `m:${id}:${shiftMonth(current, 1)}`]) {
+      const before = await pressRaw(request, chat, data, messageId);
+      await settle();
+      expect(titlesAfter(chat, before).filter((t) => forbidden.includes(t)), `«${data}» no muestra un mes fuera de rango`).toEqual([]);
+    }
+
+    await (await press(request, chat, `m:${id}:${EARLIEST_MONTH}`, messageId)).edit();
+    const tap = await press(request, chat, `d:${id}:${EARLIEST_DAY}:1`, messageId);
+    expect(tap.answer.text).toBe("Marcado");
+    expectCalendar(await tap.edit(), await habitRow(chat, id), EARLIEST_MONTH);
+    expect(await marked(api, id)).toEqual([EARLIEST_DAY]);
+  });
+
+  test.describe("con la web", () => {
+    test.use({ timezoneId: MADRID });
+
+    test("lo marcado en el bot se ve en la web al recargar, y lo marcado en la web se ve en el calendario del bot", async ({ request, api, page }) => {
+      const { chat, ids: [id], names: [name], current } = await linkedWith(request, api, "web");
+      const previous = shiftMonth(current, -1);
+      const { messageId } = await openList(request, chat);
+      await (await press(request, chat, `m:${id}:${previous}`, messageId)).edit();
+      await (await press(request, chat, `d:${id}:${previous}-10:1`, messageId)).edit();
+
+      await page.goto(`/app/habitos/${id}?mes=${previous}`);
+      await expect(page.getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
+      const dayButton = (d: number) => page.getByRole("button", { name: `${d} de ${monthName(previous)}`, exact: true });
+      await expect(dayButton(10), "la web ve el día que marcó el bot").toHaveAttribute("aria-pressed", "true");
+      await dayButton(12).click();
+      await expect.poll(() => marked(api, id), { message: "la web guarda el 12" }).toEqual([`${previous}-10`, `${previous}-12`]);
+
+      const cal = await (await press(request, chat, `m:${id}:${previous}`, messageId)).edit();
+      expectCalendar(cal, await habitRow(chat, id), previous);
+      const twelve = keyboard(cal).flat().find((b) => b.callback_data === `d:${id}:${previous}-12:0`);
+      expect(twelve?.text, "el bot ve el día que marcó la web").toContain("✅");
+    });
+  });
+});
+
+test.describe("T27: borrar", () => {
+  test("🗑️ Borrar → «¿Borrar «<nombre>» y todo su historial?» con «Sí, borrar» (y:<id>) y «Cancelar» (h:<id>); «Cancelar» vuelve al menú sin borrar", async ({ request, api }) => {
+    const { chat, ids: [id], names: [name] } = await linkedWith(request, api, "borrar");
+    const { messageId } = await openList(request, chat);
+    await (await press(request, chat, `h:${id}`, messageId)).edit();
+    const confirm = await (await press(request, chat, `x:${id}`, messageId)).edit();
+    expect(plain(confirm.text)).toBe(`¿Borrar «${name}» y todo su historial?`);
+    expect(buttons(confirm)).toEqual([
+      { text: "Sí, borrar", callback_data: `y:${id}` },
+      { text: "Cancelar", callback_data: `h:${id}` },
+    ]);
+    expectMenu(await (await press(request, chat, `h:${id}`, messageId)).edit(), await habitRow(chat, id));
+    expect((await api.from("habits").select("id").eq("id", id)).data).toHaveLength(1);
+  });
+
+  test("«Sí, borrar» borra el hábito y su historial (la web ya no los ve) y vuelve a la lista; con el último, a «Aún no tienes hábitos.»; repetirlo → «Ese hábito ya no existe.»", async ({ request, api }) => {
+    await wipeAll(api); // el estado vacío del final exige que no haya otros hábitos
+    const { chat, ids: [one, two], today } = await linkedWith(request, api, "uno", "dos");
+    await mark(api, one, today, addDays(today, -1));
+    const { messageId } = await openList(request, chat);
+    await (await press(request, chat, `x:${one}`, messageId)).edit();
+    const list = await (await press(request, chat, `y:${one}`, messageId)).edit();
+    expect((await api.from("habits").select("id").eq("id", one)).data, "el hábito ya no está").toEqual([]);
+    expect(await marked(api, one), "ni su historial").toEqual([]);
+    expectList(list, await botHabits(chat));
+    expect(buttons(list).map((x) => x.callback_data)).toEqual([`h:${two}`]);
+
+    expect((await press(request, chat, `y:${one}`, messageId)).answer.text).toBe(GONE);
+
+    await (await press(request, chat, `x:${two}`, messageId)).edit();
+    const empty = await (await press(request, chat, `y:${two}`, messageId)).edit();
+    expect(plain(empty.text).startsWith(EMPTY_LIST), `«${empty.text}»`).toBe(true);
+    expect(buttons(empty)).toEqual([{ text: SAMPLE, callback_data: "s" }]);
+  });
+});
+
+test.describe("T27: seguridad", () => {
+  let demo: SupabaseClient;
+  let demoHabit: string | undefined;
+  const demoState = async () =>
+    demoHabit ? JSON.stringify([(await demo.from("habits").select("id, name, color").eq("id", demoHabit)).data, await marked(demo, demoHabit)]) : "";
+
+  test.beforeAll(async () => {
+    // La demo solo se lee: no se vincula ni se escribe nada en ella.
+    demo = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error } = await demo.auth.signInWithPassword({ email: env("DEMO_EMAIL"), password: env("DEMO_PASSWORD") });
+    if (error) throw new Error(`No se pudo iniciar sesión como la demo: ${error.message}`);
+    demoHabit = (await demo.from("habits").select("id").limit(1)).data?.[0]?.id;
+  });
+
+  test.afterAll(async () => {
+    await demo.auth.signOut({ scope: "local" });
+  });
+
+  test("un habit_id ajeno (de la demo) o inexistente en h:, m:, d:, x: e y: → «Ese hábito ya no existe.» y nada cambia, ni en la demo", async ({ request, api }) => {
+    const { chat, today, current } = await linkedWith(request, api, "propio");
+    const { messageId } = await openList(request, chat);
+    const before = await snapshot(api);
+    const demoBefore = await demoState();
+    for (const foreign of [randomUUID(), ...(demoHabit ? [demoHabit] : [])]) {
+      const whose = foreign === demoHabit ? "de la demo" : "inexistente";
+      for (const data of [`h:${foreign}`, `m:${foreign}:${current}`, `d:${foreign}:${today}:1`, `d:${foreign}:${today}:0`, `x:${foreign}`, `y:${foreign}`]) {
+        expect((await press(request, chat, data, messageId)).answer.text, `«${data.slice(0, 2)}» con un hábito ${whose}`).toBe(GONE);
+      }
+    }
+    expect(await snapshot(api)).toBe(before);
+    expect(await demoState(), "la demo no cambia").toBe(demoBefore);
+  });
+
+  test("S-1: el hábito se borra en la web con el calendario abierto → pulsar un día, el menú, «🗑️ Borrar» o «Sí, borrar» da «Ese hábito ya no existe.», 200 y sin check-in", async ({ request, api }) => {
+    const { chat, ids: [id], today, current } = await linkedWith(request, api, "carrera");
+    const { messageId } = await openList(request, chat);
+    await (await press(request, chat, `m:${id}:${current}`, messageId)).edit();
+    await api.from("habits").delete().eq("id", id);
+    for (const data of [`d:${id}:${today}:1`, `m:${id}:${current}`, `h:${id}`, `x:${id}`, `y:${id}`]) {
+      expect((await press(request, chat, data, messageId)).answer.text, `«${data.slice(0, 2)}» tras borrarlo`).toBe(GONE);
+    }
+    expect(await marked(api, id)).toEqual([]);
+  });
+
+  test("callback_data mal formada (también de más de 64 bytes) → 200, sin editar, sin enviar mensajes y sin cambios", async ({ request, api }) => {
+    const { chat, ids: [id], today, current } = await linkedWith(request, api, "malformada");
+    const { messageId } = await openList(request, chat);
+    const before = await snapshot(api);
+    const sent = sentTo(chat).length;
+    const edits = sentTo(chat, "editMessageText").length;
+    const bad = [
+      "h:", "h:no-es-un-uuid", `h:${id}x`, `h:${id}:x`, `H:${id}`, `m:${id}`, `m:${id}:2026-1`, `m:${id}:2026-13`, `m:${id}:${current}:x`,
+      `d:${id}:${today}`, `d:${id}:${today}:2`, `d:${id}:2026-02-30:1`, `d:${id}:${today.replaceAll("-", "")}:1`, `d:no-es-un-uuid:${today}:1`,
+      `x:${id}:x`, "x:", "y:", `y:${id}x`, "l:x", "s:x", "z", `h:${id}${"x".repeat(64)}`,
+    ];
+    for (const data of bad) await pressRaw(request, chat, data, messageId);
+    await settle();
+    expect(sentTo(chat, "editMessageText").length, "no edita").toBe(edits);
+    expect(sentTo(chat).length, "no envía mensajes").toBe(sent);
+    expect(await snapshot(api)).toBe(before);
+  });
+
+  test("sin vínculo, los botones nuevos (h:, m:, d:, x:, y:, l, s) lo dicen en el callback y no tocan nada", async ({ request, api }) => {
+    const [id] = await seed(api, { name: `${prefix()}-ajeno` });
+    const before = await snapshot(api);
+    const stranger = fakeChat();
+    const today = dayAt(MADRID, new Date());
+    for (const data of [`h:${id}`, `m:${id}:${today.slice(0, 7)}`, `d:${id}:${today}:1`, `x:${id}`, `y:${id}`, "l", "s"]) {
+      const { answer } = await press(request, stranger, data, 1);
+      expect(String(answer.text ?? "").trim(), `«${data.slice(0, 2)}» sin vínculo dice algo`).not.toBe("");
+      expect(answer.text).not.toBe("Marcado");
+    }
+    expect(await snapshot(api)).toBe(before);
+  });
+});

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireEnv } from "@/lib/env";
 import type { Database } from "@/lib/supabase/database.types";
 import { telegramApiBase } from "@/lib/telegram";
-import { type BotRpc, type TelegramApi, handleUpdate } from "@/lib/telegram-bot";
+import { type BotRpc, BotRpcError, type TelegramApi, handleUpdate } from "@/lib/telegram-bot";
 
 // Telegram's webhook. Only the secret set with setWebhook (secret_token) gets in; after that the answer is always 200,
 // also for updates the bot does not understand or when Telegram fails, so Telegram does not retry them in a loop.
@@ -50,11 +50,26 @@ function botRpc(secret: string): BotRpc {
           p_done: done,
         }),
       ),
+    habits: async (chatId) => unwrap(await supabase.rpc("telegram_habits", { p_secret: secret, p_chat_id: chatId })),
+    setDay: async (chatId, habitId, day, done) =>
+      unwrap(
+        await supabase.rpc("telegram_set_day", {
+          p_secret: secret,
+          p_chat_id: chatId,
+          p_habit_id: habitId,
+          p_day: day,
+          p_done: done,
+        }),
+      ),
+    deleteHabit: async (chatId, habitId) =>
+      unwrap(await supabase.rpc("telegram_delete_habit", { p_secret: secret, p_chat_id: chatId, p_habit_id: habitId })),
+    loadSample: async (chatId) =>
+      unwrap(await supabase.rpc("telegram_load_sample", { p_secret: secret, p_chat_id: chatId })),
   };
 }
 
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
-  if (error || data === null) throw new Error("RPC failed");
+  if (error || data === null) throw new BotRpcError("RPC failed");
   return data;
 }
 

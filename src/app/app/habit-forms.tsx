@@ -14,12 +14,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { cellClass, ChainLink, dayButtonClass, dayCount, HabitStats, HeatmapRowLabels } from "@/app/habit-look";
+import { cellClass, ChainLink, dayButtonClass, HabitStats, HeatmapRowLabels } from "@/app/habit-look";
 import { Spinner } from "@/app/spinner";
 import { buttonBase, focusRing, inputClass, pressable, primaryButton, secondaryButton } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, habitColor } from "@/lib/habits";
-import { currentStreak, heatmapWeeks } from "@/lib/streak";
+import { currentStreak, dayCount, heatmapWeeks } from "@/lib/streak";
 import { withFallback } from "@/lib/with-fallback";
 import { createHabit, deleteHabit, loadSampleData, renameHabit, setCheckIn } from "./actions";
 

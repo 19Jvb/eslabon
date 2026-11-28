@@ -4,11 +4,9 @@ import Link from "next/link";
 import { Fragment, type ReactNode, useId } from "react";
 import { ChainLink, dayButtonClass, HabitStats } from "@/app/habit-look";
 import { secondaryButton } from "@/app/ui";
-import { type Day, dayInMonthName } from "@/lib/dates";
+import { type Day, dayInMonthName, WEEKDAY_LETTERS } from "@/lib/dates";
 import { HABIT_GONE } from "@/lib/habits";
 import { ErrorMessage, type Habit, useCheckIns } from "../../habit-forms";
-
-const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
 
 // The habit's stats and its month, Monday to Sunday: each day up to today is a toggle, like the card's week, and
 // marked days of the same week join into one chain. The headers row has the same gaps as the weeks, so each letter
@@ -42,7 +40,7 @@ export function HabitHistory({
         {children}
         <div className="flex flex-col gap-2 sm:w-fit">
           <div aria-hidden="true" className="flex">
-            {WEEKDAYS.map((letter, i) => (
+            {WEEKDAY_LETTERS.map((letter, i) => (
               <Fragment key={letter}>
                 {i > 0 && <ChainLink linked={false} color={habit.color} />}
                 <span className="w-11 shrink-0 text-center text-xs font-semibold text-neutral-600">{letter}</span>

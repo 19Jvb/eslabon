@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import { focusRing } from "@/app/ui";
 import { habitColor } from "@/lib/habits";
-import { bestStreak, completionRate, currentStreak, todayNudge } from "@/lib/streak";
+import { currentStreak, habitStats, todayNudge } from "@/lib/streak";
 
 // The look of a habit card, shared by /app and the landing preview so both draw the same chain, stats and heatmap.
 
@@ -31,8 +31,6 @@ export const joinedCorners = (left: boolean, right: boolean) =>
 export const dayButtonClass = (isToday: boolean, left: boolean, right: boolean, color: string) =>
   `flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${isToday ? "border-2 border-neutral-900" : "border border-neutral-500"} ${joinedCorners(left, right)} ${habitColor(color).pressed} ${focusRing}`;
 
-export const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
-
 // The stats and, while today is unmarked, the nudge below them: outside the <dl>, so its values stay as they are.
 // The current streak leads: display face, larger and in the habit's 700.
 export function HabitStats({
@@ -48,11 +46,7 @@ export function HabitStats({
 }) {
   const streak = currentStreak(marked, today);
   const nudge = todayNudge(streak, marked.includes(today));
-  const stats = [
-    ["Racha actual", dayCount(streak)],
-    ["Mejor racha", dayCount(bestStreak(marked))],
-    ["Últimos 30 días", `${completionRate(marked, today)} %`],
-  ];
+  const stats = habitStats(marked, today);
 
   return (
     <>

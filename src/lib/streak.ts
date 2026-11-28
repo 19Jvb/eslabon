@@ -33,6 +33,17 @@ export function completionRate(days: Iterable<Day>, today: Day, windowDays = 30)
   return Math.round((inWindow.length * 100) / windowDays);
 }
 
+export const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
+
+// The habit's stats as the web and the bot show them: [label, value]. A no-break space keeps «27 %» on one line.
+export function habitStats(days: Day[], today: Day): [string, string][] {
+  return [
+    ["Racha actual", dayCount(currentStreak(days, today))],
+    ["Mejor racha", dayCount(bestStreak(days))],
+    ["Últimos 30 días", `${completionRate(days, today)} %`],
+  ];
+}
+
 // `weeks` columns of 7 cells, Monday to Sunday; the last column is the current week.
 export function heatmapWeeks(days: Iterable<Day>, today: Day, weeks = 12): HeatmapCell[][] {
   const marked = new Set(days);

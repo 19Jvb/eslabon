@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestStreak, completionRate, currentStreak, heatmapWeeks, todayNudge } from "@/lib/streak";
+import { bestStreak, completionRate, currentStreak, habitStats, heatmapWeeks, todayNudge } from "@/lib/streak";
 
 describe("currentStreak", () => {
   it("vale 0 con el conjunto vacío", () => {
@@ -195,5 +195,29 @@ describe("todayNudge", () => {
   it("con racha viva dice a cuántos días llega (racha + 1)", () => {
     expect(todayNudge(1, false)).toBe("Marca hoy para llegar a 2 días");
     expect(todayNudge(12, false)).toBe("Marca hoy para llegar a 13 días");
+  });
+});
+
+describe("habitStats", () => {
+  it("las tres estadísticas de la web, con «día» en singular y «días» en plural", () => {
+    const marks = ["2026-05-10", "2026-05-09", "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-09"];
+    expect(habitStats(marks, "2026-05-10")).toEqual([
+      ["Racha actual", "2 días"],
+      ["Mejor racha", "3 días"],
+      ["Últimos 30 días", "17 %"],
+    ]);
+    expect(habitStats(["2026-05-10"], "2026-05-10")).toEqual([
+      ["Racha actual", "1 día"],
+      ["Mejor racha", "1 día"],
+      ["Últimos 30 días", "3 %"],
+    ]);
+  });
+
+  it("vacío → 0 días y 0 %", () => {
+    expect(habitStats([], "2028-02-29")).toEqual([
+      ["Racha actual", "0 días"],
+      ["Mejor racha", "0 días"],
+      ["Últimos 30 días", "0 %"],
+    ]);
   });
 });

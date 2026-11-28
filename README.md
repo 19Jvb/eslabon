@@ -37,7 +37,7 @@ La cuenta demo es compartida y lleva datos de ejemplo. Su email y su contraseña
 - **El «hoy» de cada usuario** se calcula en su zona horaria, no en la UTC del servidor.
 - **«Cargar datos de ejemplo»** rellena cualquier cuenta vacía con 3 hábitos y unos 60 días de historial.
 - **Se puede instalar** en el móvil o en el escritorio (es una PWA: manifest e iconos). No usa service worker, a propósito, para no guardar datos privados sin conexión.
-- **Bot de Telegram:** marca los hábitos de hoy desde el chat. Se explica en el apartado siguiente.
+- **Bot de Telegram:** todo lo de la web también desde el chat: ver los hábitos con sus estadísticas, marcar cualquier día en un calendario, crear, renombrar, borrar y cargar los datos de ejemplo. Se explica en el apartado siguiente.
 
 ## Integración: bot de Telegram
 
@@ -45,16 +45,25 @@ Es una integración real con otro sistema, con las mismas piezas que pide una AP
 
 1. En `/app`, la sección **Telegram** tiene el botón **«Vincular con Telegram»**. Genera un **código de un solo uso** que caduca a los 10 minutos y muestra el botón **«Abrir Telegram»**, que lleva a `t.me/EslabonHabitsBot?start=<código>`. También vale enviar `/vincular <código>` al bot.
 2. En Telegram, **Iniciar** vincula la cuenta, y el bot confirma en el chat que se ha vinculado.
-3. **`/hoy`** muestra los hábitos de hoy con un botón ⬜/✅ por hábito. Al pulsar uno, el día queda marcado o desmarcado, y el mensaje se actualiza en el sitio. La app lo muestra al recargar.
-4. Hay dos maneras de desvincular: **`/desvincular`** en el chat o **«Desvincular»** en la app. **`/ayuda`** lista los comandos.
+3. Desde ahí, **todo lo de la web**:
+   - **`/hoy`**: los hábitos de hoy con un botón ⬜/✅ por hábito. Al pulsar uno, el día queda marcado o desmarcado y el mensaje se actualiza en el sitio.
+   - **`/habitos`**: cada hábito con su racha actual, su mejor racha y el porcentaje de 30 días. Cada uno abre su menú: «📅 Historial», «✏️ Renombrar», «🗑️ Borrar» (con confirmación) y «⬅️ Volver».
+   - **«📅 Historial»**: un calendario mensual en botones, navegable desde enero de 2000 hasta hoy, donde cada día hasta hoy se marca o se desmarca de un toque («✅18»).
+   - **`/nuevo <nombre>`**: crea un hábito y ofrece la paleta (🔴 🟠 🟡 🟢 🔵 🟣) para elegir el color. Con `/nuevo` a secas, el bot pide el nombre.
+   - **«✏️ Renombrar»**: el bot pide el nombre nuevo y lo toma del siguiente mensaje.
+   - **`/ejemplo`** carga los datos de ejemplo en una cuenta vacía, y **`/cancelar`** cancela lo que esté a medias.
+
+   Las reglas son las de la web: los mismos mensajes de error, el límite de 50 hábitos y los días desde el 2000-01-01. Lo que se hace en el bot se ve en la app al recargar, y al revés.
+4. Hay dos maneras de desvincular: **`/desvincular`** en el chat o **«Desvincular»** en la app. **`/ayuda`** lista los 8 comandos.
 
 **Cómo está hecho, sin la `service_role`:**
 - **El webhook** (`POST /api/telegram/webhook`) compara en tiempo constante la cabecera `X-Telegram-Bot-Api-Secret-Token`. Si no coincide, responde 401 sin procesar nada. Si falta el secreto, responde 503.
 - **Con el secreto correcto** contesta siempre 200, para que Telegram no reintente en bucle.
-- **Para actuar** solo puede llamar a 5 funciones SQL `security definer`, pequeñas y concretas, que exigen un secreto guardado en un esquema `private` que la API no expone.
+- **Para actuar** solo puede llamar a 15 funciones SQL `security definer`, pequeñas y concretas, que exigen un secreto guardado en un esquema `private` que la API no expone.
 - **La app no puede leer el `chat_id`**: se le da permiso por columnas y esa no está entre ellas.
 - **Solo funciona en chats privados** y los mensajes van en texto plano, así que el nombre de un hábito nunca se interpreta como formato.
-- **La lógica del bot** está en una función pura (`handleUpdate`) con 52 tests unitarios. Hay además 20 E2E contra un simulador de la API de Telegram, que comprueban también que las respuestas no llevan el token ni el secreto. En la revisión (T19-r1) se comprobó además que no aparecen en los logs del servidor.
+- **El texto libre** (el nombre de un hábito) se encamina con un estado por chat que caduca a los 10 minutos, y cualquier comando lo cancela.
+- **La lógica del bot** está en una función pura (`handleUpdate`) con 205 tests unitarios. Hay además 65 E2E contra un simulador de la API de Telegram, que comprueban también que las respuestas no llevan el token ni el secreto. En la revisión (T19-r1) se comprobó además que no aparecen en los logs del servidor.
 
 **Cada cuenta se vincula con un solo chat.** La demo es compartida: si la vinculas, la última persona que la vincule se queda con ella. Para probar el bot sin que nadie interfiera, crea tu propia cuenta en `/registro`; se tarda 30 segundos.
 
@@ -91,7 +100,7 @@ flowchart LR
 
 ### Lo que encontró el ciclo (de [`docs/revisiones/`](docs/revisiones/README.md))
 
-Las 27 tareas de T00 a T24 dejaron 37 informes de revisión, con varias rondas de rechazo reales. Algunos ejemplos:
+Las tareas de T00 a T28 dejaron 44 informes de revisión, con varias rondas de rechazo reales. Algunos ejemplos:
 
 - **T04:**
   - A la regex del matcher del proxy le faltaba un escape, y rutas como `/app/medico` no renovaban la sesión.
@@ -102,6 +111,7 @@ Las 27 tareas de T00 a T24 dejaron 37 informes de revisión, con varias rondas d
 - **T17:** el secreto del bot no tenía un `CHECK` de longitud. Un secreto vacío habría abierto las funciones del bot a cualquiera. Se cerró antes del `db push`.
 - **T22:** Develop descubrió en la guía de Next 16 que, con Cache Components, un `notFound()` en la página responde 200. El 404 real del historial lo decide el proxy, y es la misma respuesta para un id inválido, inexistente o ajeno.
 - **T24:** una **auditoría de seguridad independiente** ([informe y triaje](tasks/T24-auditoria.md)) no encontró nada crítico ni alto. Al corregir el hallazgo medio, Testing rechazó la migración (F-1): el trigger del límite contaba antes de que actuara la RLS, y eso dejaba saber si otro usuario tenía 50 hábitos.
+- **T27:** en el calendario del bot, los días marcados eran solo «✅», sin número. No se sabía qué día se desmarcaba, y un lector de pantalla habría leído «marca de verificación» siete veces seguidas. Testing lo rechazó y ahora se ve «✅18».
 
 ## Stack
 
@@ -132,18 +142,18 @@ Next.js 16 (App Router, Server Components, Server Actions, `cacheComponents`) ·
 
 ## Calidad y verificación
 
-- **230 tests unitarios** (Vitest) de la lógica pura:
+- **385 tests unitarios** (Vitest) de la lógica pura:
   - fechas, zonas horarias, rachas, cambios de horario y años bisiestos;
   - el calendario mensual, los esquemas y la paginación;
   - el bot de Telegram.
-- **248 tests E2E** (Playwright + axe):
+- **308 tests E2E** (Playwright + axe):
   - autenticación, RLS, hábitos, días e historial;
   - estadísticas, datos de ejemplo y landing;
   - accesibilidad (WCAG), móvil a 375 px y movimiento reducido;
   - caché, PWA, cabeceras, cookies y el límite de 50 (incluida la concurrencia real);
   - la integración con Telegram.
 
-  **También pasan contra producción: 228 de 228.** Los otros 20 son los del webhook, que necesitan el simulador local de Telegram.
+  **También pasan contra producción: 243 de 243.** Los otros 65 son los del webhook del bot, que necesitan el simulador local de Telegram.
 - **`npm run check`** (lint con 0 warnings, tipos, tests y build) es la puerta de Testing y del [CI](.github/workflows/ci.yml).
 - **[Keep-alive](.github/workflows/keepalive.yml)** cada 3 días: inicia sesión, lee los hábitos y la cierra, para que el proyecto gratuito de Supabase no se pause mientras se evalúa.
 - **Diseño:** revisado con las skills *impeccable* (dos críticas, cada una con dos subagentes independientes, más su detector) y *emil-design-eng*. Las conclusiones se convirtieron en las tareas T11b–T11d de [`tasks/todo.md`](tasks/todo.md), que citan su origen.
@@ -177,7 +187,7 @@ Para darle datos, entra con él y pulsa «Cargar datos de ejemplo».
 3. Inserta el mismo secreto en el SQL Editor: `insert into private.telegram_secret (secret) values ('<TELEGRAM_WEBHOOK_SECRET>');`.
 4. Registra el webhook con `setWebhook`: `url` = `https://<tu-dominio>/api/telegram/webhook` (Telegram exige una URL HTTPS pública: un despliegue o un túnel, no `localhost`), `secret_token` = el mismo secreto y `allowed_updates` = `["message","callback_query"]`.
 
-Los E2E de Telegram (`e2e/telegram.spec.ts` y `e2e/telegram-webhook.spec.ts`) necesitan los pasos 2 y 3. No hacen falta el bot real ni `setWebhook`: en local, la app habla con un simulador que arranca la propia suite.
+Los E2E de Telegram (`e2e/telegram.spec.ts`, `e2e/telegram-webhook.spec.ts` y `e2e/telegram-bot-api.spec.ts`) necesitan los pasos 2 y 3. No hacen falta el bot real ni `setWebhook`: en local, la app habla con un simulador que arranca la propia suite.
 
 | Comando | Qué hace |
 |---|---|
@@ -194,8 +204,8 @@ Los E2E de Telegram (`e2e/telegram.spec.ts` y `e2e/telegram-webhook.spec.ts`) ne
   - El servidor rechaza los días futuros (en la zona horaria del usuario) y los anteriores al 2000. La RLS rechaza los anteriores al 2000 y los posteriores a mañana en UTC (ese margen cubre las zonas hasta UTC+14).
 - **Registro sin confirmar el email:** el SMTP gratuito de Supabase apenas permite envíos. Por eso el registro dice si un email ya existe y deja registrar un email ajeno.
 - **Los formularios de acceso necesitan JavaScript.** El envoltorio que evita la pantalla de error en inglés ante un 500 impide la mejora progresiva.
-- **`db advisors` da 8 avisos, todos intencionados y revisados:**
-  - las 5 funciones del bot ejecutables por `anon`: es el diseño sin `service_role`, y cada una exige el secreto;
+- **`db advisors` da 18 avisos, todos intencionados y revisados:**
+  - las 15 funciones del bot ejecutables por `anon`: es el diseño sin `service_role`, y cada una exige el secreto (probado en todas por la API);
   - `create_telegram_link_code` y `load_sample_data` ejecutables por `authenticated`;
   - `auth_leaked_password_protection`: la comprobación con HaveIBeenPwned solo está disponible [a partir del plan Pro](https://supabase.com/docs/guides/auth/password-security).
 - **Riesgos aceptados en la auditoría** (detalle en [T24](tasks/T24-auditoria.md)):

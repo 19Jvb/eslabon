@@ -21,7 +21,7 @@
 1. La interfaz está en español. El código y los identificadores, en inglés.
 2. Login con email y contraseña de Supabase. **«Confirm email» desactivado** en Supabase, para que registrarse sea inmediato (el SMTP gratuito de Supabase limita mucho los envíos). Queda documentado como decisión.
 3. Solo hábitos **diarios**. Los semanales o «X veces por semana» quedan fuera del alcance.
-4. Se pueden marcar o desmarcar **hoy y los 6 días anteriores** («ayer se me olvidó»). Los días futuros nunca.
+4. En la tarjeta se marcan hoy y los 6 días anteriores; en el historial de cada hábito, cualquier día desde el 2000-01-01 hasta hoy (cambio pedido por el humano el 2026-11-28). Los días futuros nunca.
 5. La zona horaria del usuario la da el navegador (`Intl`) y se guarda en una cookie. Si no hay cookie, se usa `Europe/Madrid`.
 6. La cuenta demo es compartida por quien evalúe. Por eso existe «Cargar datos de ejemplo» para cualquier cuenta sin hábitos, por si alguien la vacía.
 

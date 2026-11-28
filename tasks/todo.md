@@ -221,3 +221,28 @@
   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` y `TELEGRAM_API_BASE` en `.env.example`, sin valor.
 
 - [ ] **T20: Puesta en marcha y documentación:** las variables en Vercel, `setWebhook` con el `secret_token`, el secreto en `private` (SQL), una prueba real con Telegram (el humano vincula su cuenta y marca un día desde el bot) y el README actualizado.
+
+## Fase 7: broche final (pedido por el humano el 2026-11-28: «mejorar un poco más y entregamos»)
+> El humano pide gestionar **todo el historial**, no solo la última semana (sustituye la decisión de los 7 días del 2026-11-27), una revisión de seguridad final, el README con capturas y una mejora más a elección del Orquestador (la PWA instalable).
+
+- [ ] **T21: Historial completo en la BD y en el servidor (sin UI; SQL en dos fases, como en T09 y T17).**
+  - Migración nueva: la política `check_ins_insert_own` pasa a `day between date '2000-01-01' and current_date + 1` (el +1 cubre UTC+14; el resto de condiciones, igual). Nada más cambia: las funciones del bot siguen trabajando solo con «hoy».
+  - `src/lib/dates.ts` (TDD): la constante `EARLIEST_DAY = "2000-01-01"` (la misma fecha que el SQL) e `isEditableDay(day, today)` → `EARLIEST_DAY <= day <= today`. `lastWeek` no cambia (la tarjeta sigue mostrando 7 días).
+  - `setCheckIn` acepta cualquier día editable y revalida `/app` y la página del historial del hábito.
+  - Fase A (Testing, antes de aplicar, en PGlite): día de hoy, ayer, hace 1 año, 2000-01-01 → se insertan; 1999-12-31 y mañana+1 → rechazados; un usuario sigue sin poder insertar en el hábito de otro. Fase B (contra el alojado, tras el `db push` con el OK del humano): lo mismo por la API con la publishable key.
+- [ ] **T22: Página de historial por hábito (UI, la aceptación va primero).**
+  - En cada tarjeta, un enlace con el texto visible «Historial» y el nombre accesible «Ver el historial de <nombre>» → `/app/habitos/<id>`.
+  - `/app/habitos/<id>?mes=YYYY-MM` (sin `mes` o con un valor no válido o fuera de rango → el mes de hoy del usuario):
+    - título de la pestaña «Historial de <nombre>»; enlace «Volver a tus hábitos» → `/app`;
+    - h1 con el nombre del hábito y sus estadísticas (las mismas piezas que la tarjeta: racha actual, mejor racha y % de 30 días);
+    - h2 con el mes en español («Noviembre de 2026») y los enlaces «Mes anterior» y «Mes siguiente». «Mes siguiente» no aparece en el mes de hoy; «Mes anterior» no aparece en enero de 2000;
+    - calendario de lunes a domingo con las cabeceras L M X J V S D. Cada día pasado o de hoy es un botón conmutable (`aria-pressed`) cuyo texto visible es el número y cuyo nombre accesible es «<d> de <mes>» (p. ej. «3 de noviembre»); hoy añade «, hoy». Los días futuros no son botones;
+    - los días marcados se pintan con el color del hábito y los consecutivos se unen como en la cadena de la tarjeta (piezas de `habit-look.tsx`);
+    - UI optimista con vuelta atrás si falla; el error, genérico y con `role="alert"`; las estadísticas se recalculan al marcar.
+  - Un id que no es un uuid, que no existe o que es de otro usuario → 404 en español («No encontramos ese hábito.», con un enlace a «Tus hábitos»), sin filtrar si el hábito existe. La app gana su `not-found` en español.
+  - D-05, D-10 (500 → genérico, doble clic), D-11 (axe y teclado), D-12 (375 px, 44×44) y la caché `private, no-store` también en `/app/habitos/**`.
+- [ ] **T23: App instalable (PWA) (S, UI mínima).** Origen: sugerencia del Orquestador aprobada por delegación del humano.
+  - `src/app/manifest.ts`: name y short_name «Eslabón», la descripción de la landing, `lang: "es"`, `start_url: "/app"`, `display: "standalone"`, `background_color` y `theme_color` de la identidad, e iconos PNG de 192 y 512 (y uno 512 `maskable`) generados a partir de `icon.svg`, sin dependencias nuevas. `apple-icon` de 180. `themeColor` en el viewport.
+  - Aceptación: `/manifest.webmanifest` responde 200 con esos campos; cada icono responde 200 `image/png` con su tamaño real; el HTML enlaza el manifest; el proxy no los redirige.
+- [ ] **T24: Revisión de seguridad final.** Una auditoría independiente (agente security-auditor, solo lectura) de todo el repo: webhook, RPC del bot, Server Actions, RLS, cabeceras, secretos. Los hallazgos que se acepten se corrigen con el ciclo Develop → Testing; los que no, se documentan con su motivo.
+- [ ] **T25: README final con capturas** (Orquestador): capturas reales de la landing, /app, el historial y el chat con el bot (esta la aporta el humano), la sección del bot (incluida la nota de que la demo es compartida: el último que la vincula se la queda), la PWA, el historial completo en «Decisiones» y las cifras de tests al día. Cierra también T20.

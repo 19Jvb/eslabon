@@ -7,6 +7,8 @@ const DAY_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 // A Day at UTC midnight read in UTC gives its calendar weekday, whatever the user's zone or DST.
 const WEEKDAY = new Intl.DateTimeFormat("es-ES", { weekday: "long", timeZone: "UTC" });
 const WEEKDAY_INITIAL = new Intl.DateTimeFormat("es-ES", { weekday: "narrow", timeZone: "UTC" });
+const MONTH_NAME = new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" });
+const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // The user's local date in an IANA zone. The server runs in UTC, so this is the only source of "today".
 export function todayIn(timeZone: string, now: Date = new Date()): Day {
@@ -40,6 +42,7 @@ export function isValidDay(s: string): boolean {
 
 // The oldest day that can be marked; the check_ins insert policy uses the same date.
 export const EARLIEST_DAY: Day = "2000-01-01";
+export const EARLIEST_MONTH = EARLIEST_DAY.slice(0, 7);
 
 // Marks can be edited for any day from EARLIEST_DAY to today, never for the future.
 // Valid 'YYYY-MM-DD' strings compare in calendar order.
@@ -60,6 +63,40 @@ export function dayNames(day: Day, today: Day): { label: string; initial: string
   const label =
     day === today ? "Hoy" : day === addDays(today, -1) ? "Ayer" : `${weekday[0].toUpperCase()}${weekday.slice(1)} ${date}`;
   return { label, initial: WEEKDAY_INITIAL.format(at), date };
+}
+
+// A calendar month as 'YYYY-MM'. ?mes= of the history page: a month from January 2000 to the user's month, or else
+// the user's month. Valid 'YYYY-MM' strings compare in calendar order.
+export function shownMonth(param: string | undefined, today: Day): string {
+  const current = today.slice(0, 7);
+  return param && MONTH_FORMAT.test(param) && EARLIEST_MONTH <= param && param <= current ? param : current;
+}
+
+export function addMonths(month: string, n: number): string {
+  const [year, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, m - 1 + n, 1)).toISOString().slice(0, 7);
+}
+
+// The month's weeks, Monday to Sunday, with null for the days of the neighbouring months.
+export function monthWeeks(month: string): (Day | null)[][] {
+  const first = `${month}-01`;
+  const lead = (new Date(toUtcMs(first)).getUTCDay() + 6) % 7;
+  const days: (Day | null)[] = Array(lead).fill(null);
+  for (let day = first; day.startsWith(month); day = addDays(day, 1)) days.push(day);
+  while (days.length % 7) days.push(null);
+  return Array.from({ length: days.length / 7 }, (_, i) => days.slice(i * 7, i * 7 + 7));
+}
+
+// «Noviembre de 2026».
+export function monthTitle(month: string): string {
+  const name = MONTH_NAME.format(new Date(toUtcMs(`${month}-01`)));
+  return `${name[0].toUpperCase()}${name.slice(1)} de ${month.slice(0, 4)}`;
+}
+
+// «3 de noviembre».
+export function dayInMonthName(day: Day): string {
+  const at = new Date(toUtcMs(day));
+  return `${at.getUTCDate()} de ${MONTH_NAME.format(at)}`;
 }
 
 function formatDay(timeZone: string, now: Date): Day {

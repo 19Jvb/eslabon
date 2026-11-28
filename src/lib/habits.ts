@@ -102,3 +102,8 @@ export const HABIT_GONE = "Ese hábito ya no existe.";
 export function habitErrorMessage(code: string | undefined): string {
   return code === "23505" ? DUPLICATE_HABIT : GENERIC_ERROR;
 }
+
+// The <id> of /app/habitos/<id> (any segment: the proxy checks it), or null on any other path.
+export function historyHabitId(pathname: string): string | null {
+  return /^\/app\/habitos\/([^/]+)$/.exec(pathname)?.[1] ?? null;
+}

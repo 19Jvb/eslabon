@@ -249,6 +249,22 @@ export async function shownToday(page: Page, habit: string, timeZone: string) {
   return (await hoy.getAttribute("data-day"))!;
 }
 
+/** Lleva la cuenta de Server Actions en vuelo, para saber cuándo se ha asentado la UI (D-10, doble clic). */
+export function trackActions(page: Page) {
+  let pending = 0;
+  const isAction = (r: { method(): string; headers(): Record<string, string> }) =>
+    r.method() === "POST" && r.headers()["next-action"] !== undefined;
+  page.on("request", (r) => void (isAction(r) && pending++));
+  page.on("requestfinished", (r) => void (isAction(r) && pending--));
+  page.on("requestfailed", (r) => void (isAction(r) && pending--));
+  return async () => {
+    for (let i = 0; i < 2; i++) {
+      await expect.poll(() => pending, { message: "Server Actions sin terminar" }).toBe(0);
+      await page.waitForTimeout(800); // por si la UI encadena otro envío al terminar el anterior
+    }
+  };
+}
+
 export async function marked(api: SupabaseClient, habitId: string) {
   const { data, error } = await api.from("check_ins").select("day").eq("habit_id", habitId).order("day");
   if (error) throw new Error(error.message);
@@ -273,8 +289,11 @@ export const expectedStats = (marks: string[], today: string) => ({
 });
 
 /** Los pares <dt>/<dd> de cada <dl> del hábito (tiene que haber una), con los espacios normalizados (vale el espacio duro). */
-export const readStats = (page: Page, habit: string) =>
-  item(page, habit)
+export const readStats = (page: Page, habit: string) => statsIn(item(page, habit));
+
+/** Lo mismo que readStats, dentro de cualquier zona (T22: la página de historial entera). */
+export const statsIn = (scope: Locator) =>
+  scope
     .locator("dl")
     .evaluateAll((dls) =>
       dls.map((dl) =>

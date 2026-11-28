@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CheckIn, COLOR_IDS, HABIT_COLORS, habitColor, HabitRef, habitErrorMessage, NewHabit, RenameHabit } from "./habits";
+import { CheckIn, COLOR_IDS, HABIT_COLORS, habitColor, HabitRef, habitErrorMessage, historyHabitId, NewHabit, RenameHabit } from "./habits";
 
 const ID = "3f1c2a7e-9b4d-4e2a-8c1f-5d6e7f809a1b";
 const firstMessage = (result: { error?: { issues: { message: string }[] } }) => result.error?.issues[0].message;
@@ -98,5 +98,18 @@ describe("habitErrorMessage", () => {
 
   it.each(["42501", "23514", "PGRST116", undefined])("falls back to the generic message for %s", (code) => {
     expect(habitErrorMessage(code)).toBe("No se pudo completar. Inténtalo de nuevo.");
+  });
+});
+
+describe("historyHabitId", () => {
+  it("is the segment after /app/habitos/, whatever it is (the proxy checks it)", () => {
+    expect(historyHabitId(`/app/habitos/${ID}`)).toBe(ID);
+    expect(historyHabitId("/app/habitos/no-es-un-uuid")).toBe("no-es-un-uuid");
+  });
+
+  it("is null on any other path", () => {
+    for (const path of ["/app", "/app/habitos", "/app/habitos/", `/app/habitos/${ID}/x`, `/habitos/${ID}`, `/x/app/habitos/${ID}`]) {
+      expect(historyHabitId(path), path).toBeNull();
+    }
   });
 });

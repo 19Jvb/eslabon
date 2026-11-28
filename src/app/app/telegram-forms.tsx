@@ -2,11 +2,12 @@
 
 import { type RefCallback, useActionState, useCallback, useId, useRef } from "react";
 import { Spinner } from "@/app/spinner";
+import { primaryButton, secondaryButton } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { telegramStartLink } from "@/lib/telegram";
 import { withFallback } from "@/lib/with-fallback";
 import { checkTelegramLink, createTelegramLinkCode, unlinkTelegram } from "./actions";
-import { ErrorMessage, primaryButton, secondaryButton } from "./habit-forms";
+import { ErrorMessage } from "./habit-forms";
 
 const failed = { ok: false, error: GENERIC_ERROR } as const;
 const linkCodeAction = withFallback(createTelegramLinkCode, failed);

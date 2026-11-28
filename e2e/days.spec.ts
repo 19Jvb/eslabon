@@ -24,6 +24,7 @@ import {
   tabTo,
   test,
   tooLong,
+  trackActions,
 } from "./helpers";
 
 // T07: marcar y desmarcar los 7 últimos días, con el usuario de E2E.
@@ -67,22 +68,6 @@ async function expectRow(page: Page, habit: string, today: string) {
     await expect(buttons.nth(i)).toHaveAccessibleName(`${label(day, today)}: ${habit}`);
     await expect(buttons.nth(i)).toHaveAttribute("aria-pressed", /^(true|false)$/);
   }
-}
-
-/** Lleva la cuenta de Server Actions en vuelo, para saber cuándo se ha asentado la UI. */
-function trackActions(page: Page) {
-  let pending = 0;
-  const isAction = (r: { method(): string; headers(): Record<string, string> }) =>
-    r.method() === "POST" && r.headers()["next-action"] !== undefined;
-  page.on("request", (r) => void (isAction(r) && pending++));
-  page.on("requestfinished", (r) => void (isAction(r) && pending--));
-  page.on("requestfailed", (r) => void (isAction(r) && pending--));
-  return async () => {
-    for (let i = 0; i < 2; i++) {
-      await expect.poll(() => pending, { message: "Server Actions sin terminar" }).toBe(0);
-      await page.waitForTimeout(800); // por si la UI encadena otro envío al terminar el anterior
-    }
-  };
 }
 
 const pressed = (value: boolean) => String(value);

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   createContext,
   Fragment,
@@ -13,9 +14,9 @@ import {
   useState,
   useTransition,
 } from "react";
-import { cellClass, ChainLink, dayCount, HabitStats, HeatmapRowLabels, joinedCorners } from "@/app/habit-look";
+import { cellClass, ChainLink, dayButtonClass, dayCount, HabitStats, HeatmapRowLabels } from "@/app/habit-look";
 import { Spinner } from "@/app/spinner";
-import { buttonBase, focusRing, inputClass, pressable } from "@/app/ui";
+import { buttonBase, focusRing, inputClass, pressable, primaryButton, secondaryButton } from "@/app/ui";
 import { GENERIC_ERROR } from "@/lib/auth";
 import { type ActionResult, COLOR_IDS, HABIT_COLORS, HABIT_GONE, HABITS_HEADING_ID, habitColor } from "@/lib/habits";
 import { currentStreak, heatmapWeeks } from "@/lib/streak";
@@ -34,13 +35,10 @@ function focusHeading() {
   document.getElementById(HABITS_HEADING_ID)?.focus();
 }
 
-const buttonClass = `${buttonBase} text-sm`;
-export const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
-export const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
-const dangerButton = `${buttonClass} bg-red-700 text-white hover:bg-red-800`;
+const dangerButton = `${buttonBase} text-sm bg-red-700 text-white hover:bg-red-800`;
 const iconButton = `inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100 ${pressable} ${focusRing}`;
 
-type Habit = { id: string; name: string; color: string };
+export type Habit = { id: string; name: string; color: string };
 type WeekDay = { day: string; label: string; initial: string; date: number };
 // What was typed travels in the state: React resets the form after each action, back to these defaults.
 type FormState = { error: string | null; name: string };
@@ -291,15 +289,14 @@ function pulse(figure: HTMLElement | null) {
   });
 }
 
-function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
+// The marks on screen (optimistic, rolled back if the action fails), the error and the streak announcement:
+// shared by the card's week and the history calendar.
+export function useCheckIns(habit: Habit, marked: string[], today: string) {
   const [shown, setShown] = useOptimistic(marked, toggled);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const streakRef = useRef<HTMLElement>(null);
   const notify = use(ListNotice);
-  const id = useId();
-  const today = days[days.length - 1].day;
-  const color = habitColor(habit.color);
 
   // Only a change made by the user is announced, never the page load.
   const announce = (streak: number) => setAnnouncement(`Racha actual de ${habit.name}: ${dayCount(streak)}`);
@@ -328,6 +325,14 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
     });
   }
 
+  return { shown, toggle, error, announcement, streakRef };
+}
+
+function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; marked: string[] }) {
+  const today = days[days.length - 1].day;
+  const { shown, toggle, error, announcement, streakRef } = useCheckIns(habit, marked, today);
+  const id = useId();
+
   // From 768 px: the days with their stats on the left and the heatmap on the right; stacked below that.
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-8">
@@ -345,7 +350,7 @@ function DayButtons({ habit, days, marked }: { habit: Habit; days: WeekDay[]; ma
                   data-day={day}
                   aria-pressed={shown.includes(day)}
                   onClick={() => toggle(day)}
-                  className={`flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${day === today ? "border-2 border-neutral-900" : "border border-neutral-500"} ${joinedCorners(linked, linkedRight)} ${color.pressed} ${focusRing}`}
+                  className={dayButtonClass(day === today, linked, linkedRight, habit.color)}
                 >
                   {/* The name comes from this text, not aria-label: axe (WCAG 2.5.3) flags an aria-label that
                       does not contain the visible «J 26». Today and yesterday say so instead of an initial. */}
@@ -447,6 +452,10 @@ export function HabitItem({ habit, days, marked }: { habit: Habit; days: WeekDay
         )}
       </div>
       <DayButtons habit={habit} days={days} marked={marked} />
+      {/* Below the map, not beside the name: on a phone the name keeps the row's width. */}
+      <Link href={`/app/habitos/${habit.id}`} aria-label={`Ver el historial de ${habit.name}`} className={`${secondaryButton} self-start`}>
+        Historial
+      </Link>
       <dialog
         ref={dialogRef}
         aria-labelledby={`${id}-question`}

@@ -1,6 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireEnv } from "@/lib/env";
+import { HabitRef, historyHabitId } from "@/lib/habits";
+
+// A static page that calls notFound(): see the history check below.
+const MISSING_HABIT_PATH = "/habito-no-encontrado";
 
 // Refreshes the Supabase session on every request and forwards the updated cookies.
 export async function proxy(request: NextRequest) {
@@ -36,24 +40,33 @@ export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const isApp = pathname === "/app" || pathname.startsWith("/app/");
     const isAuthPage = pathname === "/login" || pathname === "/registro";
-    if (isApp && !user) return redirectWithSession("/login", request, response, cacheHeaders);
-    if (isAuthPage && user) return redirectWithSession("/app", request, response, cacheHeaders);
+    if (isApp && !user) return withSession(NextResponse.redirect(new URL("/login", request.url)), response, cacheHeaders);
+    if (isAuthPage && user) return withSession(NextResponse.redirect(new URL("/app", request.url)), response, cacheHeaders);
+
+    // With Cache Components the page sends its shell before it can read the habit, so a notFound() there answers 200.
+    // A habit that is not a uuid, does not exist or is someone else's (RLS hides it) is told apart here, before any
+    // rendering: the same 404 for the three. A failed query lets the page show its error instead.
+    const habitId = historyHabitId(pathname);
+    if (user && habitId !== null) {
+      const lookup = HabitRef.safeParse({ id: habitId }).success
+        ? await supabase.from("habits").select("id").eq("id", habitId).maybeSingle()
+        : { data: null, error: null };
+      if (!lookup.error && !lookup.data) {
+        const missing = NextResponse.rewrite(new URL(MISSING_HABIT_PATH, request.url), { request });
+        return withSession(missing, response, cacheHeaders);
+      }
+    }
   }
 
   return response;
 }
 
-// Fixed internal targets only (no ?next=), carrying any refreshed session cookies and their anti-cache headers.
-function redirectWithSession(
-  path: "/login" | "/app",
-  request: NextRequest,
-  response: NextResponse,
-  cacheHeaders: Record<string, string>,
-) {
-  const redirect = NextResponse.redirect(new URL(path, request.url));
-  response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
-  Object.entries(cacheHeaders).forEach(([key, value]) => redirect.headers.set(key, value));
-  return redirect;
+// Redirects and rewrites go to fixed internal paths only (no ?next=), with any refreshed session cookies and their
+// anti-cache headers.
+function withSession(target: NextResponse, response: NextResponse, cacheHeaders: Record<string, string>) {
+  response.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));
+  Object.entries(cacheHeaders).forEach(([key, value]) => target.headers.set(key, value));
+  return target;
 }
 
 // Static files and the Telegram webhook (no cookies, no session) skip the proxy.

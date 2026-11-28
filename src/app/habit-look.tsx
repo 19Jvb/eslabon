@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { focusRing } from "@/app/ui";
 import { habitColor } from "@/lib/habits";
 import { bestStreak, completionRate, currentStreak, todayNudge } from "@/lib/streak";
 
@@ -24,6 +25,11 @@ export function ChainLink({ linked, color }: { linked: boolean; color: string })
 // The corners a day shares with a linked neighbour on its left or right.
 export const joinedCorners = (left: boolean, right: boolean) =>
   `${left ? "rounded-l-none" : ""} ${right ? "rounded-r-none" : ""}`;
+
+// A day button of the chain (the card's week and the history calendar): filled in the habit's 700 while pressed,
+// today outlined in black and its corners squared where it joins a neighbour.
+export const dayButtonClass = (isToday: boolean, left: boolean, right: boolean, color: string) =>
+  `flex size-11 shrink-0 flex-col items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100 aria-pressed:text-white motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97] ${isToday ? "border-2 border-neutral-900" : "border border-neutral-500"} ${joinedCorners(left, right)} ${habitColor(color).pressed} ${focusRing}`;
 
 export const dayCount = (n: number) => (n === 1 ? "1 día" : `${n} días`);
 

@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dayNames, EARLIEST_DAY, isEditableDay, isValidDay, lastWeek, longDateIn, timeZoneOrDefault, todayIn } from "@/lib/dates";
+import {
+  addDays,
+  addMonths,
+  dayInMonthName,
+  dayNames,
+  EARLIEST_DAY,
+  isEditableDay,
+  isValidDay,
+  lastWeek,
+  longDateIn,
+  monthTitle,
+  monthWeeks,
+  shownMonth,
+  timeZoneOrDefault,
+  todayIn,
+} from "@/lib/dates";
 
 describe("todayIn", () => {
   it("devuelve el día local en formato YYYY-MM-DD", () => {
@@ -139,7 +154,7 @@ describe("isEditableDay", () => {
 });
 
 describe("lastWeek", () => {
-  it("devuelve los 7 días editables de hoy−6 a hoy, en orden", () => {
+  it("devuelve los 7 días de la tarjeta, de hoy−6 a hoy, en orden", () => {
     expect(lastWeek("2026-11-26")).toEqual(["2026-11-20", "2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26"]);
   });
 
@@ -226,5 +241,87 @@ describe("longDateIn", () => {
 
   it("si la zona no es válida usa Europe/Madrid", () => {
     expect(longDateIn("2026-12-31T23:30:00+00:00", "Marte/Base")).toBe("1 de enero de 2027");
+  });
+});
+
+describe("shownMonth", () => {
+  const today = "2026-11-28";
+
+  it("un ?mes= válido entre enero de 2000 y el mes de hoy es ese mes", () => {
+    expect(shownMonth("2026-10", today)).toBe("2026-10");
+    expect(shownMonth("2000-01", today)).toBe("2000-01");
+    expect(shownMonth("2026-11", today)).toBe("2026-11");
+  });
+
+  it("sin ?mes=, mal formado o fuera de rango es el mes de hoy", () => {
+    for (const mes of [undefined, "", "abc", "2026-13", "2026-00", "2026-1", "2026-11-01", " 2026-10", "1999-12", "2026-12", "9999-01"]) {
+      expect(shownMonth(mes, today), String(mes)).toBe("2026-11");
+    }
+  });
+
+  it("el mes de hoy sale del día del usuario: el 1 de enero ya es el año nuevo", () => {
+    expect(shownMonth(undefined, "2027-01-01")).toBe("2027-01");
+    expect(shownMonth("2026-12", "2027-01-01")).toBe("2026-12");
+  });
+});
+
+describe("addMonths", () => {
+  it("cruza el fin de año en los dos sentidos", () => {
+    expect(addMonths("2026-12", 1)).toBe("2027-01");
+    expect(addMonths("2027-01", -1)).toBe("2026-12");
+    expect(addMonths("2000-02", -1)).toBe("2000-01");
+    expect(addMonths("2026-11", 0)).toBe("2026-11");
+  });
+});
+
+describe("monthWeeks", () => {
+  it("semanas de lunes a domingo, con null fuera del mes (noviembre de 2026 empieza en domingo)", () => {
+    const weeks = monthWeeks("2026-11");
+    expect(weeks).toHaveLength(6);
+    expect(weeks[0]).toEqual([null, null, null, null, null, null, "2026-11-01"]);
+    expect(weeks[1][0]).toBe("2026-11-02");
+    expect(weeks[5]).toEqual(["2026-11-30", null, null, null, null, null, null]);
+  });
+
+  it("cada semana tiene 7 huecos y el mes sale entero y en orden, una vez cada día", () => {
+    for (const month of ["2026-02", "2026-03", "2028-02", "2026-10", "2000-01", "2026-12"]) {
+      const weeks = monthWeeks(month);
+      expect(weeks.every((week) => week.length === 7), month).toBe(true);
+      const days = weeks.flat().filter((day) => day !== null);
+      expect(days[0], month).toBe(`${month}-01`);
+      days.forEach((day, i) => i > 0 && expect(day, month).toBe(addDays(days[i - 1], 1)));
+      expect(addDays(days[days.length - 1], 1).slice(0, 7), month).not.toBe(month);
+    }
+  });
+
+  it("febrero de 2027 cabe en 4 semanas justas; el de 2028 (bisiesto) llega al 29", () => {
+    expect(monthWeeks("2027-02")).toHaveLength(4);
+    expect(monthWeeks("2027-02")[0][0]).toBe("2027-02-01");
+    expect(monthWeeks("2028-02").flat().filter(Boolean).at(-1)).toBe("2028-02-29");
+  });
+
+  it("el cambio de horario no mueve ningún día de columna (marzo y octubre de 2026 en Madrid)", () => {
+    expect(monthWeeks("2026-03")[4][6]).toBe("2026-03-29");
+    expect(monthWeeks("2026-03")[5][0]).toBe("2026-03-30");
+    expect(monthWeeks("2026-10")[3][6]).toBe("2026-10-25");
+  });
+
+  it("enero de 2000 empieza en sábado", () => {
+    expect(monthWeeks("2000-01")[0]).toEqual([null, null, null, null, null, "2000-01-01", "2000-01-02"]);
+  });
+});
+
+describe("monthTitle y dayInMonthName", () => {
+  it("el mes en español con mayúscula inicial y el año", () => {
+    expect(monthTitle("2026-11")).toBe("Noviembre de 2026");
+    expect(monthTitle("2000-01")).toBe("Enero de 2000");
+    expect(monthTitle("2026-03")).toBe("Marzo de 2026");
+  });
+
+  it("el día con su mes en minúscula, sin cero delante", () => {
+    expect(dayInMonthName("2026-11-03")).toBe("3 de noviembre");
+    expect(dayInMonthName("2028-02-29")).toBe("29 de febrero");
+    expect(dayInMonthName("2026-12-31")).toBe("31 de diciembre");
+    expect(dayInMonthName("2026-03-29")).toBe("29 de marzo");
   });
 });

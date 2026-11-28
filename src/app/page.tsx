@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const points = [
   {
     title: "Marca cada día",
-    text: "Un toque marca el hábito de hoy. Si se te olvidó, puedes corregir los últimos 7 días.",
+    text: "Un toque marca el hábito de hoy. ¿Se te olvidó algún día? Márcalo cuando quieras desde su historial.",
   },
   {
     title: "Mira crecer tu racha",

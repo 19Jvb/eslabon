@@ -3,4 +3,7 @@ export const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2
 // Pressing gives way a little (no movement with reduced motion).
 export const pressable = "motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97]";
 export const buttonBase = `inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-4 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${pressable} ${focusRing}`;
+const buttonClass = `${buttonBase} text-sm`;
+export const primaryButton = `${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`;
+export const secondaryButton = `${buttonClass} border border-neutral-400 bg-white text-neutral-900 hover:bg-neutral-100`;
 export const inputClass = `min-h-11 w-full rounded-lg border border-neutral-400 bg-white px-3 text-base text-neutral-900 aria-invalid:border-red-700 ${focusRing}`;

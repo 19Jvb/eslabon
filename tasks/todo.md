@@ -230,7 +230,7 @@
   - `src/lib/dates.ts` (TDD): la constante `EARLIEST_DAY = "2000-01-01"` (la misma fecha que el SQL) e `isEditableDay(day, today)` → `EARLIEST_DAY <= day <= today`. `lastWeek` no cambia (la tarjeta sigue mostrando 7 días).
   - `setCheckIn` acepta cualquier día editable y revalida `/app` y la página del historial del hábito.
   - Fase A (Testing, antes de aplicar, en PGlite): día de hoy, ayer, hace 1 año, 2000-01-01 → se insertan; 1999-12-31 y mañana+1 → rechazados; un usuario sigue sin poder insertar en el hábito de otro. Fase B (contra el alojado, tras el `db push` con el OK del humano): lo mismo por la API con la publishable key.
-- [ ] **T22: Página de historial por hábito (UI, la aceptación va primero).**
+- [x] **T22: Página de historial por hábito (UI, la aceptación va primero).**
   - En cada tarjeta, un enlace con el texto visible «Historial» y el nombre accesible «Ver el historial de <nombre>» → `/app/habitos/<id>`.
   - `/app/habitos/<id>?mes=YYYY-MM` (sin `mes` o con un valor no válido o fuera de rango → el mes de hoy del usuario):
     - título de la pestaña «Historial de <nombre>»; enlace «Volver a tus hábitos» → `/app`;
@@ -244,6 +244,8 @@
   - D-05, D-10 (500 → genérico, doble clic), D-11 (axe y teclado), D-12 (375 px, 44×44) y la caché `private, no-store` también en `/app/habitos/**`.
 - [ ] **T23: App instalable (PWA) (S, UI mínima).** Origen: sugerencia del Orquestador aprobada por delegación del humano.
   - `src/app/manifest.ts`: name y short_name «Eslabón», la descripción de la landing, `lang: "es"`, `start_url: "/app"`, `display: "standalone"`, `background_color` y `theme_color` de la identidad, e iconos PNG de 192 y 512 (y uno 512 `maskable`) generados a partir de `icon.svg`, sin dependencias nuevas. `apple-icon` de 180. `themeColor` en el viewport.
+  - Heredado de T22-r1: S-1 `prefetch={false}` en el enlace «Historial» de cada tarjeta (cada prefetch pasa por la consulta del proxy); S-2 la marca «Eslabón» también en el 404 general; S-3 si el hábito ya no existe al marcar desde el historial, el aviso ofrece el enlace a «Tus hábitos».
   - Aceptación: `/manifest.webmanifest` responde 200 con esos campos; cada icono responde 200 `image/png` con su tamaño real; el HTML enlaza el manifest; el proxy no los redirige.
 - [ ] **T24: Revisión de seguridad final.** Una auditoría independiente (agente security-auditor, solo lectura) de todo el repo: webhook, RPC del bot, Server Actions, RLS, cabeceras, secretos. Los hallazgos que se acepten se corrigen con el ciclo Develop → Testing; los que no, se documentan con su motivo.
 - [ ] **T25: README final con capturas** (Orquestador): capturas reales de la landing, /app, el historial y el chat con el bot (esta la aporta el humano), la sección del bot (incluida la nota de que la demo es compartida: el último que la vincula se la queda), la PWA, el historial completo en «Decisiones» y las cifras de tests al día. Cierra también T20.
+  - Verificación obligatoria tras el despliegue (de T22-r1): `BASE_URL=https://eslabon-theta.vercel.app npx playwright test e2e/history.spec.ts -g "Cache-Control|404"` (el 404 reescrito por el proxy y `private, no-store` en Vercel).

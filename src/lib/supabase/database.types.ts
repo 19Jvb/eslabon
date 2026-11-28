@@ -87,11 +87,43 @@ isOneToOne: false
 "load_sample_data":
 { Args: { "p_today": string }; Returns: undefined
                            },
+"telegram_cancel":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: undefined
+                           },
+"telegram_create_habit":
+{ Args: { "p_chat_id": number,"p_color": string,"p_secret": string }; Returns: string
+                           },
+"telegram_delete_habit":
+{ Args: { "p_chat_id": number,"p_habit_id": string,"p_secret": string }; Returns: string
+                           },
+"telegram_habits":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: {
+              "color": string,"days": string[],"habit_id": string,"name": string,"today": string
+            }[]
+                           },
 "telegram_link":
 { Args: { "p_chat_id": number,"p_code": string,"p_secret": string }; Returns: string
                            },
+"telegram_load_sample":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: string
+                           },
+"telegram_pending_action":
+{ Args: { "p_chat_id": number,"p_secret": string }; Returns: string
+                           },
+"telegram_rename_habit":
+{ Args: { "p_chat_id": number,"p_name": string,"p_secret": string }; Returns: string
+                           },
 "telegram_set_checkin":
 { Args: { "p_chat_id": number,"p_done": boolean,"p_habit_id": string,"p_secret": string }; Returns: string
+                           },
+"telegram_set_day":
+{ Args: { "p_chat_id": number,"p_day": string,"p_done": boolean,"p_habit_id": string,"p_secret": string }; Returns: string
+                           },
+"telegram_start_create":
+{ Args: { "p_chat_id": number,"p_name"?: string,"p_secret": string }; Returns: string
+                           },
+"telegram_start_rename":
+{ Args: { "p_chat_id": number,"p_habit_id": string,"p_secret": string }; Returns: string
                            },
 "telegram_status":
 { Args: { "p_chat_id": number,"p_secret": string }; Returns: string

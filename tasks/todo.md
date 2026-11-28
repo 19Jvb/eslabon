@@ -262,7 +262,7 @@
 - **Las mismas reglas que la web:** nombre de 1 a 60 caracteres sin espacios sobrantes y único por usuario (sin distinguir mayúsculas), colores de la paleta, días desde el 2000-01-01 hasta el «hoy» del vínculo.
 - **Texto plano** (sin `parse_mode`) y `callback_data` de 64 bytes como máximo.
 
-- [ ] **T26: Migración del bot completo (SQL en dos fases):** `private.telegram_pending` y las RPC para `anon` con `p_secret`:
+- [x] **T26: Migración del bot completo (SQL en dos fases):** `private.telegram_pending` y las RPC para `anon` con `p_secret`:
   - `telegram_habits(p_secret, p_chat_id)` → los hábitos del vínculo (`habit_id`, `name`, `color`, `days date[]` con todos sus días marcados) y `today`;
   - `telegram_set_day(p_secret, p_chat_id, p_habit_id, p_day, p_done)` → 'ok' | 'not_linked' | 'not_found' | 'out_of_range' (idempotente);
   - `telegram_start_create(p_secret, p_chat_id, p_name)` → guarda la acción pendiente → 'ok' | 'not_linked' | 'invalid' | 'duplicate' | 'limit';
@@ -281,9 +281,11 @@
   - Historial: calendario mensual en el teclado en línea (fila de navegación «‹» / «Noviembre de 2026» / «›», fila L M X J V S D, un botón por día). Pulsar un día pasado o de hoy lo marca o desmarca y edita el mensaje; los días marcados se distinguen a simple vista; los futuros y los huecos no hacen nada. Navegación entre 2000-01 y el mes de hoy del vínculo.
   - Borrar: confirmación «¿Borrar «<nombre>» y todo su historial?» con «Sí, borrar» y «Cancelar».
   - `/hoy` sigue igual. Lo marcado en el bot se ve en la web al recargar, y al revés.
+  - Heredado de T26-r1 (S-1): cualquier error de una RPC (p. ej. un 23503 si el hábito se borra en medio) → el bot responde con un mensaje genérico en español y el webhook sigue devolviendo 200; nunca el error crudo.
 - [ ] **T28: El bot crea y renombra (la aceptación va primero):**
   - `/nuevo <nombre>` (o `/nuevo` a secas → pide el nombre): valida el nombre como la web y ofrece la paleta (🔴 🟠 🟡 🟢 🔵 🟣); al elegir el color, crea el hábito y lo confirma. Mensajes en español para el duplicado, el límite («Has llegado al máximo de 50 hábitos.») y el nombre no válido.
   - «✏️ Renombrar» → «Escribe el nuevo nombre de «<nombre>».»; el siguiente texto lo renombra (mismas validaciones).
   - `/ejemplo`: carga los datos de ejemplo si la cuenta está vacía.
+  - Heredado de T26-r1: S-2 cualquier comando cancela lo pendiente (`telegram_cancel`) antes de ejecutarse, para que un texto posterior no renombre un hábito de una acción anterior; S-3 el bot hace `trim()` del nombre antes de mandarlo (la BD solo quita espacios con `btrim`).
   - `/cancelar` y `/ayuda` (con la lista completa de comandos). El Orquestador actualiza los comandos del bot (`setMyCommands`) con el OK del humano.
-- [ ] **T29: Puesta en producción y documentación del bot completo:** el `db push` (OK del humano), el despliegue, la prueba contra producción, `setMyCommands` y la sección del bot del README.
+- [ ] **T29: Puesta en producción y documentación del bot completo:** el `db push` (OK del humano), el despliegue, la prueba contra producción, `setMyCommands` y la sección del bot del README (los avisos de `db advisors` pasan de 8 a 18: 15 RPC del bot para anon, 2 para authenticated y leaked password).

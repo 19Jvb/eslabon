@@ -225,7 +225,7 @@
 ## Fase 7: broche final (pedido por el humano el 2026-11-28: «mejorar un poco más y entregamos»)
 > El humano pide gestionar **todo el historial**, no solo la última semana (sustituye la decisión de los 7 días del 2026-11-27), una revisión de seguridad final, el README con capturas y una mejora más a elección del Orquestador (la PWA instalable).
 
-- [ ] **T21: Historial completo en la BD y en el servidor (sin UI; SQL en dos fases, como en T09 y T17).**
+- [x] **T21: Historial completo en la BD y en el servidor (sin UI; SQL en dos fases, como en T09 y T17).**
   - Migración nueva: la política `check_ins_insert_own` pasa a `day between date '2000-01-01' and current_date + 1` (el +1 cubre UTC+14; el resto de condiciones, igual). Nada más cambia: las funciones del bot siguen trabajando solo con «hoy».
   - `src/lib/dates.ts` (TDD): la constante `EARLIEST_DAY = "2000-01-01"` (la misma fecha que el SQL) e `isEditableDay(day, today)` → `EARLIEST_DAY <= day <= today`. `lastWeek` no cambia (la tarjeta sigue mostrando 7 días).
   - `setCheckIn` acepta cualquier día editable y revalida `/app` y la página del historial del hábito.
@@ -240,6 +240,7 @@
     - los días marcados se pintan con el color del hábito y los consecutivos se unen como en la cadena de la tarjeta (piezas de `habit-look.tsx`);
     - UI optimista con vuelta atrás si falla; el error, genérico y con `role="alert"`; las estadísticas se recalculan al marcar.
   - Un id que no es un uuid, que no existe o que es de otro usuario → 404 en español («No encontramos ese hábito.», con un enlace a «Tus hábitos»), sin filtrar si el hábito existe. La app gana su `not-found` en español.
+  - Heredado de T21: la landing (`src/app/page.tsx`) deja de decir «puedes corregir los últimos 7 días» (S-3) y el `it` de `src/lib/dates.test.ts:142` deja de hablar de «7 días editables» (S-1).
   - D-05, D-10 (500 → genérico, doble clic), D-11 (axe y teclado), D-12 (375 px, 44×44) y la caché `private, no-store` también en `/app/habitos/**`.
 - [ ] **T23: App instalable (PWA) (S, UI mínima).** Origen: sugerencia del Orquestador aprobada por delegación del humano.
   - `src/app/manifest.ts`: name y short_name «Eslabón», la descripción de la landing, `lang: "es"`, `start_url: "/app"`, `display: "standalone"`, `background_color` y `theme_color` de la identidad, e iconos PNG de 192 y 512 (y uno 512 `maskable`) generados a partir de `icon.svg`, sin dependencias nuevas. `apple-icon` de 180. `themeColor` en el viewport.

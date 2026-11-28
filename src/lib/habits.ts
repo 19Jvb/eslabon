@@ -94,7 +94,7 @@ export const CheckIn = z.object({ habitId: HabitId, day: z.string(GENERIC_ERROR)
 // loadSampleData takes nothing from the client: anything sent (a forged request) is rejected.
 export const NoInput = z.undefined(GENERIC_ERROR);
 
-export const OUT_OF_RANGE = "Solo puedes marcar los últimos 7 días.";
+export const OUT_OF_RANGE = "Solo puedes marcar días desde el 1 de enero de 2000 hasta hoy.";
 
 export const HABIT_GONE = "Ese hábito ya no existe.";
 

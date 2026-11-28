@@ -38,12 +38,16 @@ export function isValidDay(s: string): boolean {
   return DAY_FORMAT.test(s) && toDay(toUtcMs(s)) === s;
 }
 
-// Marks can be edited for today and the 6 previous days, never for the future.
+// The oldest day that can be marked; the check_ins insert policy uses the same date.
+export const EARLIEST_DAY: Day = "2000-01-01";
+
+// Marks can be edited for any day from EARLIEST_DAY to today, never for the future.
+// Valid 'YYYY-MM-DD' strings compare in calendar order.
 export function isEditableDay(day: Day, today: Day): boolean {
-  return isValidDay(day) && isValidDay(today) && addDays(today, -6) <= day && day <= today;
+  return isValidDay(day) && isValidDay(today) && EARLIEST_DAY <= day && day <= today;
 }
 
-// The editable days, oldest first: today−6 … today.
+// The 7 days shown on the habit card, oldest first: today−6 … today.
 export function lastWeek(today: Day): Day[] {
   return Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
 }

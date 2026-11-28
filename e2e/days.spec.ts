@@ -28,9 +28,10 @@ import {
 
 // T07: marcar y desmarcar los 7 últimos días, con el usuario de E2E.
 // Contrato de la interfaz: cada día es un <button data-day="YYYY-MM-DD" aria-pressed> con nombre «<etiqueta>: <hábito>».
-// Riesgo que queda: si un test marca hoy−6 justo al cruzar la medianoche de la zona, el servidor ya lo ve como hoy−7.
+// T21: el servidor y la BD aceptan cualquier día desde EARLIEST_DAY (2000-01-01) hasta hoy; la tarjeta sigue con 7.
 
-const RANGE = "Solo puedes marcar los últimos 7 días.";
+const RANGE = "Solo puedes marcar días desde el 1 de enero de 2000 hasta hoy.";
+const EARLIEST = "2000-01-01";
 
 // El navegador en Madrid salvo donde se dice otra cosa: así el resultado no depende de la zona de la máquina (CI en UTC).
 test.use({ timezoneId: MADRID });
@@ -217,13 +218,13 @@ test.describe("marcar y desmarcar", () => {
 });
 
 test.describe("el servidor valida el día (cuerpo de la Server Action manipulado)", () => {
-  test("futuro, hoy−7 y «2026-02-30» → «Solo puedes marcar los últimos 7 días.», la UI vuelve atrás y la BD no cambia", async ({ page, api }) => {
+  test("futuro, 1999-12-31 y «2026-02-30» → «Solo puedes marcar días desde el 1 de enero de 2000 hasta hoy.», la UI vuelve atrás y la BD no cambia", async ({ page, api }) => {
     const habit = `${prefix()}-trampa`;
     const [id] = await seed(api, { name: habit });
     await openApp(page);
     const today = await shownToday(page, habit, MADRID);
     const hoy = dayButton(page, "Hoy", habit);
-    for (const bad of [addDays(today, 1), addDays(today, -7), "2026-02-30"]) {
+    for (const bad of [addDays(today, 1), addDays(EARLIEST, -1), "2026-02-30"]) {
       const sent = await sendRewrittenAction(page, () => hoy.click(), (body) => body.split(today).join(bad));
       expect(sent.original, "el cuerpo de la acción lleva el día como 'YYYY-MM-DD'").toContain(today);
       expect(sent.status, `${bad}: estado HTTP`).toBe(200);
@@ -232,6 +233,26 @@ test.describe("el servidor valida el día (cuerpo de la Server Action manipulado
       await expect(alert(page, RANGE).or(alert(page, GENERIC)).first(), `${bad}: error en español anunciado`).toBeVisible();
     }
     expect(await marked(api, id)).toEqual([]);
+  });
+
+  test("T21 · hoy−7, hace 1 año y 2000-01-01 (cuerpo manipulado) → se guardan en la BD, sin error de rango", async ({ page, api }) => {
+    const habit = `${prefix()}-historial`;
+    const [id] = await seed(api, { name: habit });
+    await openApp(page);
+    const today = await shownToday(page, habit, MADRID);
+    const hoy = dayButton(page, "Hoy", habit);
+    const old = [addDays(today, -7), addDays(today, -365), EARLIEST];
+    for (const day of old) {
+      const sent = await sendRewrittenAction(page, () => hoy.click(), (body) => body.split(today).join(day));
+      expect(sent.original, "el cuerpo de la acción lleva el día como 'YYYY-MM-DD'").toContain(today);
+      expect(sent.status, `${day}: estado HTTP`).toBe(200);
+      expect(sent.body, `${day}: respuesta sin error de rango`).not.toContain(asciiPart(RANGE));
+      await expect.poll(() => marked(api, id), { message: `${day} guardado en la BD` }).toContain(day);
+      // Se guardó otro día, no hoy: al revalidar, «Hoy» queda sin marcar y el siguiente clic vuelve a marcar.
+      await expect(hoy, `${day}: «Hoy» sin marcar`).toHaveAttribute("aria-pressed", "false");
+    }
+    await expect(alert(page, RANGE)).toHaveCount(0);
+    expect(await marked(api, id)).toEqual([...old].sort());
   });
 
   test("cuerpos que no son el esperado (['x'], [], [null], [42]) → error en español, no un 500, y la BD no cambia", async ({ page, api }) => {
@@ -273,7 +294,8 @@ test.describe("zona horaria", () => {
         expect(days, "caduca en 1 año").toBeGreaterThan(360);
         expect(days, "caduca en 1 año").toBeLessThan(370);
 
-        // El servidor valida con la zona de la cookie: en una de las dos zonas, Hoy o hoy−6 está fuera del rango de Madrid.
+        // El servidor valida con la zona de la cookie: en Kiritimati, «Hoy» suele ser el mañana de Madrid (fuera de rango
+        // si el servidor usara Madrid). Desde T21, hoy−6 de Honolulu ya no discrimina (todo el pasado es editable).
         await dayButton(page, "Hoy", habit).click();
         await dayButton(page, label(addDays(today, -6), today), habit).click();
         await expect.poll(() => marked(api, id)).toEqual([addDays(today, -6), today]);

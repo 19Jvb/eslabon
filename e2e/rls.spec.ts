@@ -81,9 +81,52 @@ test.describe("aislamiento RLS entre dos usuarios", () => {
     expect(asA.error).not.toBeNull();
   });
 
+  test("T21 · B tampoco marca el hábito de A en un día antiguo (2000-01-01, 2015-06-15) y A no ve filas nuevas", async () => {
+    for (const day of ["2000-01-01", "2015-06-15"]) {
+      const asB = await b.from("check_ins").insert({ habit_id: habitId, day });
+      expect(asB.error, `${day} sin user_id`).not.toBeNull();
+      const asA = await b.from("check_ins").insert({ habit_id: habitId, user_id: aId, day });
+      expect(asA.error, `${day} con user_id = A`).not.toBeNull();
+    }
+    const own = await a.from("check_ins").select("day").eq("habit_id", habitId);
+    expect(own.data).toEqual([{ day: today }]);
+  });
+
   test("sin sesión (anon) no se lee nada", async () => {
     const anon = await apiClient().from("habits").select("id").eq("id", habitId);
     expect(anon.data ?? []).toEqual([]);
+  });
+});
+
+// T21: la política de insert acepta de 2000-01-01 a current_date + 1 (UTC en el servidor; el +1 cubre UTC+14).
+test.describe("T21 · la BD acepta el historial completo (A, por la API)", () => {
+  let a: SupabaseClient;
+  let habitId: string;
+  const utc = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+  test.beforeAll(async () => {
+    ({ client: a } = await signIn("E2E_USER"));
+    const habit = await a.from("habits").insert({ name: `e2e-${Date.now()}-historial` }).select("id").single();
+    if (habit.error) throw new Error(`A no pudo crear su hábito: ${habit.error.message}`);
+    habitId = habit.data.id;
+  });
+
+  test.afterAll(async () => {
+    if (a) await cleanUp(a);
+  });
+
+  test("hoy, ayer, hace 1 año y 2000-01-01 → se insertan; 1999-12-31 y hoy+2 → 42501", async () => {
+    const good = [utc(0), utc(-1), utc(-365), "2000-01-01"];
+    for (const day of good) {
+      const { error } = await a.from("check_ins").insert({ habit_id: habitId, day });
+      expect(error, `${day}: ${error?.message}`).toBeNull();
+    }
+    for (const day of ["1999-12-31", utc(2)]) {
+      const { error } = await a.from("check_ins").insert({ habit_id: habitId, day });
+      expect(error?.code, `${day}: debe rechazarlo la política`).toBe("42501");
+    }
+    const own = await a.from("check_ins").select("day").eq("habit_id", habitId).order("day");
+    expect(own.data?.map((r) => r.day)).toEqual([...good].sort());
   });
 });
 

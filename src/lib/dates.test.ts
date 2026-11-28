@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dayNames, isEditableDay, isValidDay, lastWeek, longDateIn, timeZoneOrDefault, todayIn } from "@/lib/dates";
+import { addDays, dayNames, EARLIEST_DAY, isEditableDay, isValidDay, lastWeek, longDateIn, timeZoneOrDefault, todayIn } from "@/lib/dates";
 
 describe("todayIn", () => {
   it("devuelve el día local en formato YYYY-MM-DD", () => {
@@ -98,15 +98,19 @@ describe("isValidDay", () => {
 describe("isEditableDay", () => {
   const today = "2026-03-03";
 
-  it("permite hoy y los 6 días anteriores, también cruzando el mes", () => {
-    expect(isEditableDay(today, today)).toBe(true);
-    expect(isEditableDay("2026-03-01", today)).toBe(true);
-    expect(isEditableDay("2026-02-25", today)).toBe(true);
+  it("EARLIEST_DAY es el 2000-01-01, la misma fecha que la política de check_ins", () => {
+    expect(EARLIEST_DAY).toBe("2000-01-01");
   });
 
-  it("rechaza el séptimo día hacia atrás y anteriores", () => {
-    expect(isEditableDay("2026-02-24", today)).toBe(false);
-    expect(isEditableDay("2025-03-03", today)).toBe(false);
+  it("permite hoy, ayer, hace 8 días, hace 1 año y el 2000-01-01, también cruzando el mes", () => {
+    for (const day of [today, "2026-03-02", "2026-03-01", "2026-02-25", "2026-02-24", "2025-03-03", "2000-01-01"]) {
+      expect(isEditableDay(day, today), day).toBe(true);
+    }
+  });
+
+  it("rechaza los días anteriores al 2000-01-01", () => {
+    expect(isEditableDay("1999-12-31", today)).toBe(false);
+    expect(isEditableDay("1970-01-01", today)).toBe(false);
   });
 
   it("rechaza los días futuros", () => {
@@ -120,9 +124,17 @@ describe("isEditableDay", () => {
     expect(isEditableDay("", today)).toBe(false);
   });
 
-  it("cruza el fin de año", () => {
-    expect(isEditableDay("2026-12-27", "2027-01-02")).toBe(true);
-    expect(isEditableDay("2026-12-26", "2027-01-02")).toBe(false);
+  it("rechaza si hoy no es un día válido", () => {
+    expect(isEditableDay("2026-03-01", "2026-02-30")).toBe(false);
+    expect(isEditableDay("2026-03-01", "")).toBe(false);
+  });
+
+  it("cruza el fin de año y el 29 de febrero", () => {
+    expect(isEditableDay("2026-12-26", "2027-01-02")).toBe(true);
+    expect(isEditableDay("2027-01-03", "2027-01-02")).toBe(false);
+    expect(isEditableDay("2028-02-29", "2028-03-01")).toBe(true);
+    expect(isEditableDay("2000-01-01", "2000-01-01")).toBe(true);
+    expect(isEditableDay("2000-01-02", "2000-01-01")).toBe(false);
   });
 });
 
@@ -137,11 +149,10 @@ describe("lastWeek", () => {
     expect(lastWeek("2028-03-01").slice(-2)).toEqual(["2028-02-29", "2028-03-01"]);
   });
 
-  it("cada día es editable desde hoy, y el anterior y el siguiente no", () => {
+  it("cada día es editable desde hoy, y el siguiente a hoy no", () => {
     const today = "2026-11-26";
     const week = lastWeek(today);
     expect(week.every((day) => isEditableDay(day, today))).toBe(true);
-    expect(isEditableDay(addDays(week[0], -1), today)).toBe(false);
     expect(isEditableDay(addDays(today, 1), today)).toBe(false);
   });
 });

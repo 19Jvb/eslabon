@@ -121,6 +121,7 @@ export async function setCheckIn(input: unknown): Promise<ActionResult> {
   if (error && !(done && error.code === "23505")) return { ok: false, error: GENERIC_ERROR };
 
   revalidatePath("/app");
+  revalidatePath(`/app/habitos/${habitId}`);
   return { ok: true };
 }
 

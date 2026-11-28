@@ -250,3 +250,40 @@
 - [x] **T25: README final con capturas** (Orquestador): capturas reales de la landing, /app y el historial, la sección del bot (incluida la nota de que la demo es compartida: el último que la vincula se la queda), la PWA, el historial completo en «Decisiones» y las cifras de tests al día.
   - Arbitraje del Orquestador (T25-r1, F-9): la captura del chat con el bot depende del humano y pasa a T20, que sigue abierta hasta su prueba real con su propia cuenta; T25 se cierra sin ella.
   - Verificación obligatoria tras el despliegue (de T22-r1): `BASE_URL=https://eslabon-theta.vercel.app npx playwright test e2e/history.spec.ts -g "Cache-Control|404"` (el 404 reescrito por el proxy y `private, no-store` en Vercel).
+
+## Fase 8: el bot hace todo lo de la web (pedido por el humano el 2026-11-28)
+> «Vamos a añadirle funciones al bot para poder hacerlo desde Telegram todo.» Paridad con la web: ver los hábitos con sus estadísticas, marcar cualquier día del historial, crear, renombrar, borrar y cargar los datos de ejemplo.
+
+**Diseño (fijado por el Orquestador):**
+- **Mismo modelo de seguridad que T17:** solo RPC `security definer` estrechas para `anon` que exigen `p_secret` y actúan sobre el usuario del vínculo (`chat_id` → `user_id`). Nada de `service_role`. Cada RPC comprueba que el hábito es del usuario vinculado.
+- **Las estadísticas se calculan en TypeScript** con las mismas funciones puras que la web (`src/lib/streak.ts`, `src/lib/dates.ts`): la RPC devuelve los días marcados y el «hoy» del vínculo.
+- **Conversación con estado** para lo que necesita texto libre (el nombre de un hábito nuevo o renombrado): una fila por chat en `private.telegram_pending` (acción, hábito, nombre, caduca a los 10 minutos). Cualquier comando la cancela; `/cancelar` también.
+- **El límite de 50 también por el bot:** el trigger de T24 no cuenta cuando `auth.uid()` es null (como en estas RPC), así que la RPC de crear comprueba el límite ella misma, con el mismo advisory lock por usuario.
+- **Las mismas reglas que la web:** nombre de 1 a 60 caracteres sin espacios sobrantes y único por usuario (sin distinguir mayúsculas), colores de la paleta, días desde el 2000-01-01 hasta el «hoy» del vínculo.
+- **Texto plano** (sin `parse_mode`) y `callback_data` de 64 bytes como máximo.
+
+- [ ] **T26: Migración del bot completo (SQL en dos fases):** `private.telegram_pending` y las RPC para `anon` con `p_secret`:
+  - `telegram_habits(p_secret, p_chat_id)` → los hábitos del vínculo (`habit_id`, `name`, `color`, `days date[]` con todos sus días marcados) y `today`;
+  - `telegram_set_day(p_secret, p_chat_id, p_habit_id, p_day, p_done)` → 'ok' | 'not_linked' | 'not_found' | 'out_of_range' (idempotente);
+  - `telegram_start_create(p_secret, p_chat_id, p_name)` → guarda la acción pendiente → 'ok' | 'not_linked' | 'invalid' | 'duplicate' | 'limit';
+  - `telegram_create_habit(p_secret, p_chat_id, p_color)` → crea con el nombre pendiente → 'ok' | 'not_linked' | 'no_pending' | 'invalid' | 'duplicate' | 'limit';
+  - `telegram_start_rename(p_secret, p_chat_id, p_habit_id)` → 'ok' | 'not_linked' | 'not_found';
+  - `telegram_pending_action(p_secret, p_chat_id)` → la acción pendiente vigente (o ninguna), para encaminar el texto libre;
+  - `telegram_rename_habit(p_secret, p_chat_id, p_name)` → 'ok' | 'not_linked' | 'no_pending' | 'not_found' | 'invalid' | 'duplicate';
+  - `telegram_cancel(p_secret, p_chat_id)`;
+  - `telegram_delete_habit(p_secret, p_chat_id, p_habit_id)` → 'ok' | 'not_linked' | 'not_found';
+  - `telegram_load_sample(p_secret, p_chat_id)` → 'ok' | 'not_linked' | 'not_empty'. Reutiliza la lógica de `load_sample_data` sin duplicarla: se extrae a una función privada que reciben las dos.
+  - Al desvincular o volver a vincular, se borra la acción pendiente del chat.
+  - Fase A en PGlite: aislamiento (nada sobre hábitos de otro usuario ni sin vínculo), secreto obligatorio, límite de 50 también con inserts simultáneos, unicidad y validación del nombre, rango de días, caducidad de lo pendiente, idempotencia y mutaciones. Fase B contra el alojado tras el `db push` con el OK del humano.
+- [ ] **T27: El bot ve y marca todo (la aceptación va primero, con el simulador):**
+  - `/habitos`: un mensaje con cada hábito y sus estadísticas («Racha actual», «Mejor racha», «Últimos 30 días») y un botón por hábito que abre su menú. Sin hábitos: el texto de la web y un botón «Cargar datos de ejemplo».
+  - Menú del hábito (edita el mensaje): el nombre, sus estadísticas y los botones «📅 Historial», «✏️ Renombrar», «🗑️ Borrar» y «⬅️ Volver».
+  - Historial: calendario mensual en el teclado en línea (fila de navegación «‹» / «Noviembre de 2026» / «›», fila L M X J V S D, un botón por día). Pulsar un día pasado o de hoy lo marca o desmarca y edita el mensaje; los días marcados se distinguen a simple vista; los futuros y los huecos no hacen nada. Navegación entre 2000-01 y el mes de hoy del vínculo.
+  - Borrar: confirmación «¿Borrar «<nombre>» y todo su historial?» con «Sí, borrar» y «Cancelar».
+  - `/hoy` sigue igual. Lo marcado en el bot se ve en la web al recargar, y al revés.
+- [ ] **T28: El bot crea y renombra (la aceptación va primero):**
+  - `/nuevo <nombre>` (o `/nuevo` a secas → pide el nombre): valida el nombre como la web y ofrece la paleta (🔴 🟠 🟡 🟢 🔵 🟣); al elegir el color, crea el hábito y lo confirma. Mensajes en español para el duplicado, el límite («Has llegado al máximo de 50 hábitos.») y el nombre no válido.
+  - «✏️ Renombrar» → «Escribe el nuevo nombre de «<nombre>».»; el siguiente texto lo renombra (mismas validaciones).
+  - `/ejemplo`: carga los datos de ejemplo si la cuenta está vacía.
+  - `/cancelar` y `/ayuda` (con la lista completa de comandos). El Orquestador actualiza los comandos del bot (`setMyCommands`) con el OK del humano.
+- [ ] **T29: Puesta en producción y documentación del bot completo:** el `db push` (OK del humano), el despliegue, la prueba contra producción, `setMyCommands` y la sección del bot del README.
